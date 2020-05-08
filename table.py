@@ -1,13 +1,17 @@
+from collections import namedtuple
 from itertools import product
 import numpy as np
 from typing import List, Tuple, Union
 
-from src.utils.helpers import (Game, play_game, moving_average, state_transforms,
+from utils.helpers import (Game, play_game, moving_average, state_transforms,
      checkstates, state_transforms, reverse_transforms, reverse_function, state_to_actions,
      print_outcomes)
-from src.utils.players import Player
+from utils.players import Player, MoveRecord
 
 INITIAL_VALUE = 0.5
+
+
+ValueMod = namedtuple('ValueMod', ['state', 'move', 'previous', 'new'])
 
 
 def initialize_value_map(init_val: float) -> dict:
@@ -106,12 +110,12 @@ class TablePlayer(Player):
         
         discount = 1
         terminal = 0 if reward < 0 else 1
+        reward_mods = []
         for entry in self.buffer[::-1]:
-            state, move, marker = entry
-            match_state, transform = state_lookup(state, self.value_map)
-            action_values = self.value_map[match_state][marker]
+            match_state, transform = state_lookup(entry.state, self.value_map)
+            action_values = self.value_map[match_state][entry.marker]
             adj_values = reverse_transforms(action_values, transform, ind_to_loc)
-            current = adj_values[move]
+            current = adj_values[entry.move]
             # TODO: should this really be a percent?
             # if we're at 0.75 and win , smaller delta than if we lose
             # maybe just handle with alpha (start it lower, for one - 0.25?)
@@ -120,56 +124,61 @@ class TablePlayer(Player):
             updated = np.clip(current + delta*np.sign(reward), a_min=0, a_max=1)
             undo = transform
             undo['args'] = {k: -undo['args'][k] for k in undo['args']}
-            adj_move = [k for k in reverse_transforms({move: 0}, undo, ind_to_loc)][0]
-            self.value_map[match_state][marker][adj_move] = updated
+            adj_move = [k for k in reverse_transforms({entry.move: 0}, undo, ind_to_loc)][0]
+            self.value_map[match_state][entry.marker][adj_move] = updated
             discount *= 0.5
+            mod = ValueMod(state=match_state, move=adj_move, previous=current, new=updated)
+            reward_mods.append(mod)
+
         # NOT wiping buffer here in case we want to troubleshoot
+        return reward_mods
 
 
-init_value_map = initialize_value_map(INITIAL_VALUE)
-player1 = TablePlayer(init_value_map)
-player2 = TablePlayer(init_value_map)
+if __name__ == 'main':
+    init_value_map = initialize_value_map(INITIAL_VALUE)
+    player1 = TablePlayer(init_value_map)
+    player2 = TablePlayer(init_value_map)
 
-# what about player1 and player2 processing rewards, then play against rando player
-# will they learn faster/better against smart competition?
+    # what about player1 and player2 processing rewards, then play against rando player
+    # will they learn faster/better against smart competition?
 
-wins = []
-# TODO: tweak alpha during training
-# we can quickly hit a terminal, but then lose a ton with one bad outcome
-# lowering alpha over time fights this
-# player1.alpha = ?
-player1.explore = True
-for _ in range(20000):
-    game = Game()
-    play_game(game, player1, player2)
-    player1.process_reward(game.won, game.ind_to_loc)
-    player2.process_reward(-game.won, game.ind_to_loc)
-    wins.append(game.won)
+    wins = []
+    # TODO: tweak alpha during training
+    # we can quickly hit a terminal, but then lose a ton with one bad outcome
+    # lowering alpha over time fights this
+    # player1.alpha = ?
+    player1.explore = True
+    for _ in range(1):
+        game = Game()
+        play_game(game, player1, player2)
+        player1.process_reward(game.won, game.ind_to_loc)
+        player2.process_reward(-game.won, game.ind_to_loc)
+        wins.append(game.won)
 
-ewins = []
-player1.explore = False
-player3 = Player(init_value_map)
-for _ in range(1000):
-    game = Game()
-    play_game(game, player1, player3)
-    # player1.process_reward(game.won, game.ind_to_loc)
-    ewins.append(game.won)
+    ewins = []
+    player1.explore = False
+    player3 = Player(init_value_map)
+    for _ in range(1):
+        game = Game()
+        play_game(game, player1, player3)
+        # player1.process_reward(game.won, game.ind_to_loc)
+        ewins.append(game.won)
 
-# from matplotlib import pyplot as plt
-# plt.plot(moving_average(ewins, n=1000))
+    # from matplotlib import pyplot as plt
+    # plt.plot(moving_average(ewins, n=1000))
 
-player1.explore = False
-exploit_wins = []
-for _ in range(1000):
-    game = Game()
-    play_game(game, player1, player2)
-    # player1.process_reward(game.won, game.ind_to_loc)
-    exploit_wins.append(game.won)
-# plt.plot(moving_average(exploit_wins, n=100))
-# print(np.mean(exploit_wins))
+    player1.explore = False
+    exploit_wins = []
+    for _ in range(1):
+        game = Game()
+        play_game(game, player1, player2)
+        # player1.process_reward(game.won, game.ind_to_loc)
+        exploit_wins.append(game.won)
+    # plt.plot(moving_average(exploit_wins, n=100))
+    # print(np.mean(exploit_wins))
 
-# TODO: unit tests for funcs
-# TODO: docstrings
-# TODO: check type hints
-# TODO: reward with each move
-# TODO: when to update alpha? lower over time?
+    # TODO: unit tests for funcs
+    # TODO: docstrings
+    # TODO: check type hints
+    # TODO: reward with each move
+    # TODO: when to update alpha? lower over time?

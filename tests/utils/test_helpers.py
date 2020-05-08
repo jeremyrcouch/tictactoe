@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.utils.helpers import (Game, array_in_list, moving_average, state_to_actions,
+from utils.helpers import (Game, array_in_list, moving_average, state_to_actions,
     checkstates, state_transforms, reverse_transforms, reverse_function, play_game)
 
 

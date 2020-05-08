@@ -1,5 +1,9 @@
+from collections import namedtuple
 import numpy as np
 from typing import List, Tuple, Union
+
+
+MoveRecord = namedtuple('MoveRecord', ['state', 'move', 'marker'])
 
 
 class Player:
@@ -9,4 +13,5 @@ class Player:
         self.explore = True  # False -> exploit
 
     def record_move(self, state: np.ndarray, move: Tuple[int], marker: int):
-        self.buffer.append((state, move, marker))
+        record = MoveRecord(state=state, move=move, marker=marker)
+        self.buffer.append(record)

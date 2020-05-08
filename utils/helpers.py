@@ -1,7 +1,7 @@
 import numpy as np
 from typing import List, Tuple
 
-from src.utils.players import Player
+from utils.players import Player
 
 
 class Game:

@@ -1,6 +1,6 @@
 import pytest
 
-from src.utils.players import Player
+from utils.players import Player
 
 
 @pytest.mark.skip(reason='trivial')

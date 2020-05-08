@@ -2,7 +2,81 @@ import numpy as np
 import pytest
 
 from src.utils.helpers import (Game, array_in_list, moving_average, state_to_actions,
-    checkstates, state_transforms, reverse_transforms, reverse_function)
+    checkstates, state_transforms, reverse_transforms, reverse_function, play_game)
+
+
+@pytest.mark.parametrize(
+    "loc, marker, expected",
+    [
+        pytest.param((0, 0), 2, False, id="invalid-marker"),
+        pytest.param((0, 0), -1, False, id="not-turn"),
+        pytest.param((1, 1), 1, False, id="loc-not-empty"),
+        pytest.param((0, 0), 1, True, id="valid")
+    ],
+)
+def test_Game_mark(loc, marker, expected):
+    # arrange
+    game = Game()
+    prev_turn = 1
+    game.turn = prev_turn
+    game.state[1, 1] = -1
+    prev_mark = game.state[loc[0], loc[1]]
+
+    # act
+    valid = game.mark(loc, marker)
+    expected_turn = int(marker*-1) if valid else prev_turn
+    expected_mark = marker if valid else prev_mark
+
+    # assert
+    assert valid == expected
+    assert game.turn == expected_turn
+    assert game.state[loc[0], loc[1]] == expected_mark
+
+
+@pytest.mark.parametrize(
+    "state, expected",
+    [
+        pytest.param((1, -1, 1, -1, -1, 1, 1, 1, -1), True, id="full-board"),
+        pytest.param((1, -1, 1, -1, -1, 1, 1, -1, -1), True, id="won"),
+        pytest.param((1, -1, 1, 0, -1, 0, 1, 0, -1), False, id="not-done")
+    ],
+)
+def test_Game_update_done(state, expected):
+    # arrange
+    game = Game()
+    game.state = np.reshape(state, game.board_shape)
+
+    # act
+    game._update_done()
+
+    # assert
+    assert game.done == expected
+
+
+@pytest.mark.parametrize(
+    "state, expected",
+    [
+        pytest.param((1, -1, 1, -1, -1, 1, 1, 1, -1), Game.empty_marker, id="none"),
+        pytest.param((-1, -1, 1, 1, -1, 1, 1, 1, -1), -1, id="diag"),
+        pytest.param((1, -1, 1, -1, -1, 1, 1, -1, -1), -1, id="vert"),
+        pytest.param((1, -1, 1, -1, -1, -1, 1, 1, -1), -1, id="horiz")
+    ],
+)
+def test_Game_update_won(state, expected):
+    # arrange
+    game = Game()
+    game.state = np.reshape(state, game.board_shape)
+
+    # act
+    game._update_won()
+
+    # assert
+    assert game.won == expected
+
+
+@pytest.mark.skip(reason='side effects')
+def test_play_game():
+    pass
 
 
 @pytest.mark.parametrize(

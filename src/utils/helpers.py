@@ -76,7 +76,7 @@ def moving_average(vals, n=100):
     return cum_vals[n - 1:] / n
 
 
-# side effects - ok?
+# side effects
 def play_game(game: Game, player1: Player, player2: Player, first: int = None):
     player1.buffer = []
     player2.buffer = []

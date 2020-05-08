@@ -69,11 +69,14 @@ def array_in_list(arr, arr_list):
 
 
 def moving_average(vals, n=100):
+    if n < 1:
+        raise ValueError('n must be > 0')
     cum_vals = np.cumsum(vals)
     cum_vals[n:] = cum_vals[n:] - cum_vals[:-n]
     return cum_vals[n - 1:] / n
 
 
+# side effects - ok?
 def play_game(game: Game, player1: Player, player2: Player, first: int = None):
     player1.buffer = []
     player2.buffer = []
@@ -99,8 +102,8 @@ def play_game(game: Game, player1: Player, player2: Player, first: int = None):
         cur_player.record_move(prev_state, move, prev_turn)
 
 
-def state_to_actions(state: Tuple[int], ind_to_loc: List[Tuple]) -> List[Tuple]:
-    inds = [i for i, mark in enumerate(state) if mark == 0]
+def state_to_actions(state: Tuple[int], ind_to_loc: List[Tuple], empty: str) -> List[Tuple]:
+    inds = [i for i, mark in enumerate(state) if mark == empty]
     actions = [ind_to_loc[ind] for ind in inds]
     return actions
 

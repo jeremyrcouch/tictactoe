@@ -10,7 +10,6 @@ from src.utils.players import Player
 INITIAL_VALUE = 0.5
 
 
-# TODO: save to file and load in?
 def initialize_value_map(init_val: float) -> dict:
     prod_combs = product(Game.valid_markers + [Game.empty_marker],
                          repeat=Game.board_shape[0]**2)
@@ -46,7 +45,7 @@ def initialize_value_map(init_val: float) -> dict:
     init_value_map = {
         c: {
             m: {
-                a: init_val for a in state_to_actions(c, Game.ind_to_loc)
+                a: init_val for a in state_to_actions(c, Game.ind_to_loc, Game.empty_marker)
             } for m in [-1, 1]
         } for c in combs
     }

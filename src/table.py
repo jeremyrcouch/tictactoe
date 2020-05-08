@@ -2,17 +2,13 @@ from itertools import product
 import numpy as np
 from typing import List, Tuple, Union
 
+from src.utils.helpers import ?
+
 
 def state_to_actions(state: Tuple[int], ind_to_loc: List[Tuple]) -> List[Tuple]:
     inds = [i for i, mark in enumerate(state) if mark == 0]
-    # NOTE: since len(state) only == 9, little to no benefit from:
-    # inds = list(np.where(np.array(state) == 0)[0])
     actions = [ind_to_loc[ind] for ind in inds]
     return actions
-
-# NOTE: not currently needed, keeping for reference
-# def array_in_list(arr, arr_list):
-#    return next((True for elem in arr_list if np.array_equal(elem, arr)), False)
 
 
 def reverse_transforms(action_values: dict, transform: dict, ind_to_loc: List[Tuple]) -> dict:

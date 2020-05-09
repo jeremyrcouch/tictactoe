@@ -1,4 +1,5 @@
 from collections import namedtuple
+from copy import deepcopy
 from itertools import product
 import numpy as np
 from typing import List, Tuple, Union
@@ -86,11 +87,40 @@ def state_lookup(state: np.ndarray, value_map: dict) -> (dict, dict):
     raise ValueError('No matching state found')
 
 
+def collect_values(value_map: dict) -> List[float]:
+    """Collect value map values.
+
+    Args:
+        value_map: dict, value map
+
+    Returns:
+        values: list of float
+    """
+
+    values = []
+    for s in value_map:
+        for m in value_map[s]:
+            for a in value_map[s][m]:
+                values.append(value_map[s][m][a])
+    return values
+
+
+def print_value_map_distribution(value_map: dict):
+    """Print percent of values that fall in ranges."""
+    values = collect_values(value_map)
+    total = len(values)
+    bounds = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01]
+    for low, up in zip(bounds[:-1], bounds[1:]):
+        count = len([v for v in values if ((v >= low) and (v < up))])
+        print('{} to {}: {:.2%}'.format(low, up, count/total))
+
+
 class TablePlayer(Player):    
     def __init__(self, value_map: dict):
         super().__init__(self)
-        self.value_map = value_map.copy()
+        self.value_map = deepcopy(value_map)
         self._min_reward_delta = 1/128
+        self._discount_perc_decrease = 0.5
 
     def play(self, marker: int, game: Game) -> Tuple[int]:
         """Player's action during their turn.
@@ -148,75 +178,67 @@ class TablePlayer(Player):
             return None
         
         discount = 1
-        terminal = 0 if reward < 0 else 1
+        # terminal = 0 if reward < 0 else 1
         reward_mods = []
         for entry in self.buffer[::-1]:
             match_state, transform = state_lookup(entry.state, self.value_map)
             action_values = self.value_map[match_state][entry.marker]
             adj_values = reverse_transforms(action_values, transform, ind_to_loc)
             current = adj_values[entry.move]
-            # TODO: should this really be a percent?
-            # if we're at 0.75 and win , smaller delta than if we lose
-            # maybe just handle with alpha (start it lower, for one - 0.25?)
-            percent = abs(reward*discount*self.alpha)
-            delta = max(self._min_reward_delta, abs((terminal - current)*percent))
+
+            # Option A: percentage of delta with terminal value of direction
+            # issue: bigger deltas for rewards in the direction of the terminal value further from
+            # percent = abs(reward*discount*self.alpha)
+            # delta = max(self._min_reward_delta, abs((terminal - current)*percent))
+            # Option B: just add value
+            delta = max(self._min_reward_delta, abs(reward*discount*self.alpha))
+
             updated = np.clip(current + delta*np.sign(reward), a_min=0, a_max=1)
             undo = transform
             undo['args'] = {k: -undo['args'][k] for k in undo['args']}
             adj_move = [k for k in reverse_transforms({entry.move: 0}, undo, ind_to_loc)][0]
             self.value_map[match_state][entry.marker][adj_move] = updated
-            discount *= 0.5
+            discount *= self._discount_perc_decrease
             mod = ValueMod(state=match_state, move=adj_move, previous=current, new=updated)
             reward_mods.append(mod)
 
-        # NOT wiping buffer here in case we want to troubleshoot
         return reward_mods
 
 
 if __name__ == 'main':
-    init_value_map = initialize_value_map(INITIAL_VALUE)
-    player1 = TablePlayer(init_value_map)
-    player2 = TablePlayer(init_value_map)
+    # TODO: reward with each move
+
+    # TODO: when to update alpha? lower over time?
+    # we can quickly hit a terminal, but then lose a ton with one bad outcome
+    # lowering alpha over time fights this
 
     # what about player1 and player2 processing rewards, then play against rando player
     # will they learn faster/better against smart competition?
 
-    wins = []
-    # TODO: tweak alpha during training
-    # we can quickly hit a terminal, but then lose a ton with one bad outcome
-    # lowering alpha over time fights this
-    # player1.alpha = ?
-    player1.explore = True
-    for _ in range(1):
+    init_value_map = initialize_value_map(INITIAL_VALUE)
+    player1 = TablePlayer(init_value_map)
+    player2 = TablePlayer(init_value_map)
+
+    ALPHA_DECREASE_RATE = 0.25
+    ALPHA_DECREASE_GAMES = 10000
+    trains = []
+    for i in range(30000):
+        if (i+1)%ALPHA_DECREASE_GAMES == 0:
+            player1.alpha *= ALPHA_DECREASE_RATE
+            player2.alpha *= ALPHA_DECREASE_RATE
         game = Game()
         play_game(game, player1, player2)
         player1.process_reward(game.won, game.ind_to_loc)
         player2.process_reward(-game.won, game.ind_to_loc)
-        wins.append(game.won)
+        trains.append(game.won)
 
-    ewins = []
+    tests = []
     player1.explore = False
-    player3 = Player(init_value_map)
-    for _ in range(1):
+    player3 = TablePlayer(init_value_map)
+    for _ in range(10000):
         game = Game()
         play_game(game, player1, player3)
         # player1.process_reward(game.won, game.ind_to_loc)
-        ewins.append(game.won)
+        tests.append(game.won)
 
-    # from matplotlib import pyplot as plt
-    # plt.plot(moving_average(ewins, n=1000))
-
-    player1.explore = False
-    exploit_wins = []
-    for _ in range(1):
-        game = Game()
-        play_game(game, player1, player2)
-        # player1.process_reward(game.won, game.ind_to_loc)
-        exploit_wins.append(game.won)
-    # plt.plot(moving_average(exploit_wins, n=100))
-    # print(np.mean(exploit_wins))
-
-    # TODO: docstrings
-    # TODO: check type hints
-    # TODO: reward with each move
-    # TODO: when to update alpha? lower over time?
+    print_outcomes(tests)

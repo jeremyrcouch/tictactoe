@@ -4,7 +4,7 @@ import numpy as np
 from typing import List, Tuple, Union
 
 from utils.helpers import (Game, play_game, moving_average, state_transforms,
-     checkstates, state_transforms, reverse_transforms, reverse_function, state_to_actions,
+     check_states, state_transforms, reverse_transforms, reverse_function, state_to_actions,
      print_outcomes)
 from utils.players import Player, MoveRecord
 
@@ -15,6 +15,15 @@ ValueMod = namedtuple('ValueMod', ['state', 'move', 'previous', 'new'])
 
 
 def initialize_value_map(init_val: float) -> dict:
+    """Initialize a value map.
+
+    Args:
+        init_val: float, initial value
+
+    Returns:
+        init_value_map: dict, value map
+    """
+
     prod_combs = product(Game.valid_markers + [Game.empty_marker],
                          repeat=Game.board_shape[0]**2)
     all_combs = [pc for pc in prod_combs]
@@ -58,7 +67,18 @@ def initialize_value_map(init_val: float) -> dict:
 
 
 def state_lookup(state: np.ndarray, value_map: dict) -> (dict, dict):
-    states, adjs = checkstates(state)
+    """Finding matching state in value map.
+
+    Args:
+        state: array, game board state
+        value_map: dict, value map
+
+    Returns:
+        s: dict, matching state
+        adj: dict, transform to get to matching state
+    """
+
+    states, adjs = check_states(state)
     for i, s in enumerate(states):
         mark_map = value_map.get(s, None)
         if mark_map:
@@ -73,7 +93,16 @@ class TablePlayer(Player):
         self._min_reward_delta = 1/128
 
     def play(self, marker: int, game: Game) -> Tuple[int]:
-        # TODO: in this case, play == _policy, but may not always be the case
+        """Player's action during their turn.
+
+        Args:
+            marker: int, player's marker in this game
+            game: instance of Game
+
+        Returns:
+            loc: tuple of int, action (board location)
+        """
+
         loc = self._policy(marker, game)
         return loc
 
@@ -104,7 +133,17 @@ class TablePlayer(Player):
         loc = actions[loc_ind]
         return loc
 
-    def process_reward(self, reward: Union[int, float], ind_to_loc: List[Tuple]):
+    def process_reward(self, reward: Union[int, float], ind_to_loc: List[Tuple]) -> List[ValueMod]:
+        """Update value map given reward.
+
+        Args:
+            reward: int or float, reward value
+            ind_to_loc: list of tuple, game state index to board location map
+
+        Returns:
+            reward_mods: list of ValueMod, modifications to value for each move
+        """
+
         if reward == 0:
             return None
         
@@ -177,7 +216,6 @@ if __name__ == 'main':
     # plt.plot(moving_average(exploit_wins, n=100))
     # print(np.mean(exploit_wins))
 
-    # TODO: unit tests for funcs
     # TODO: docstrings
     # TODO: check type hints
     # TODO: reward with each move

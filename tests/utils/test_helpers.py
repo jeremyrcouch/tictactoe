@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from utils.helpers import (Game, array_in_list, moving_average, state_to_actions,
-    checkstates, state_transforms, reverse_transforms, reverse_function, play_game)
+    check_states, state_transforms, reverse_transforms, reverse_function, play_game)
 
 
 @pytest.mark.parametrize(
@@ -168,7 +168,7 @@ def test_check_states():
     }
 
     # act
-    states, transforms = checkstates(state)
+    states, transforms = check_states(state)
 
     # assert
     assert len(states) == expected_count

@@ -21,6 +21,16 @@ class Game:
         self.turn = self.empty_marker
 
     def mark(self, loc: Tuple[int], marker: int) -> bool:
+        """Take a player's attempted move and, if valid, apply it to the game state.
+
+        Args:
+            loc: tuple of int, board location to mark
+            marker: int, player's marker for this game
+
+        Returns:
+            bool, True if move was valid - False otherwise
+        """
+
         if marker not in self.valid_markers:
             msg = ('{} not one of the valid markers ({})'
                    .format(marker, self.valid_markers))
@@ -64,11 +74,21 @@ class Game:
 
 
 # not currently needed, keeping for reference
-def array_in_list(arr, arr_list):
+def array_in_list(arr: np.ndarray, arr_list: List[np.ndarray]):
    return next((True for elem in arr_list if np.array_equal(elem, arr)), False)
 
 
-def moving_average(vals, n=100):
+def moving_average(vals: list, n: int = 100) -> np.ndarray:
+    """Calculate moving average of values.
+
+    Args:
+        vals: list, values
+        n: int, number of previous points to calculate average from
+
+    Returns:
+        array, moving average
+    """
+
     if n < 1:
         raise ValueError('n must be > 0')
     cum_vals = np.cumsum(vals)
@@ -78,6 +98,15 @@ def moving_average(vals, n=100):
 
 # side effects
 def play_game(game: Game, player1: Player, player2: Player, first: int = None):
+    """Play a single game.
+
+    Args:
+        game: instance of Game
+        player1: instance of player class
+        player2: instance of player class
+        first: int, index of Game.valid_markers (0 or 1) to specify whose turn is first
+    """
+
     player1.buffer = []
     player2.buffer = []
     if first is not None:
@@ -103,12 +132,33 @@ def play_game(game: Game, player1: Player, player2: Player, first: int = None):
 
 
 def state_to_actions(state: Tuple[int], ind_to_loc: List[Tuple], empty: str) -> List[Tuple]:
+    """Lookup the potential actions given the current state of the game.
+
+    Args:
+        state: tuple of int, game board state
+        ind_to_loc: list of tuple, game state index to board location map
+        empty: str, marker for empty board space
+
+    Returns:
+        actions: list of tuple, potential actions (board locations)
+    """
+
     inds = [i for i, mark in enumerate(state) if mark == empty]
     actions = [ind_to_loc[ind] for ind in inds]
     return actions
 
 
-def checkstates(state: np.ndarray) -> (List[Tuple], List[int]):
+def check_states(state: np.ndarray) -> (List[Tuple], List[dict]):
+    """Find the list of states to check for a match and their transforms.
+
+    Args:
+        state: array, game board state
+
+    Returns:
+        states: list of tuple, states to check for a match
+        transforms: list of dict, transforms to move from input state to states to check
+    """
+
     flat = tuple(state.flatten())
     states, transforms = state_transforms(flat)
     swap = tuple([elem*-1 for elem in flat])
@@ -119,6 +169,16 @@ def checkstates(state: np.ndarray) -> (List[Tuple], List[int]):
 
 
 def state_transforms(state: Tuple[int]) -> (List[Tuple], List[dict]):
+    """Transform a state by rotation and symmetry.
+
+    Args:
+        state: tuple of int, game board state
+    
+    Returns:
+        states: list of tuple, transformed states
+        transforms: list of dict, transforms to move from input state to output states
+    """
+
     states = [state]
     transforms = [{'func': None, 'args': {}}]
     box = np.reshape(state, (3, 3))
@@ -136,6 +196,17 @@ def state_transforms(state: Tuple[int]) -> (List[Tuple], List[dict]):
 
 
 def reverse_transforms(action_values: dict, transform: dict, ind_to_loc: List[Tuple]) -> dict:
+    """Map locations based on transform to matching state.
+
+    Args:
+        action_values: dict, action to value map
+        transform: dict, transform function and args
+        ind_to_loc: list of tuple, game state index to board location map
+
+    Returns:
+        adj_values: dict, action to value map with actions transformed to matching state
+    """
+
     adj_values = {
         reverse_function(act, ind_to_loc, transform['func'], transform['args']): action_values[act] 
             for act in action_values
@@ -145,6 +216,18 @@ def reverse_transforms(action_values: dict, transform: dict, ind_to_loc: List[Tu
 
 def reverse_function(loc: Tuple[int], ind_to_loc: List[Tuple],
                      func, func_args: dict = {}) -> Tuple[int]:
+    """Find location from reversing transform.
+
+    Args:
+        loc: tuple of int, move location
+        ind_to_loc: list of tuple, game state index to board location map
+        func: transform function
+        func_args: dict, transform function args to reverse it
+
+    Returns:
+        new_loc: tuple of int, location from reversing transform
+    """
+
     if func is None:
         return loc
     inds = np.reshape([i for i in range(len(ind_to_loc))], (3, 3))

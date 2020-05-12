@@ -7,7 +7,7 @@ from typing import List, Tuple, Union
 from utils.helpers import (Game, play_game, moving_average, state_transforms,
      check_states, state_transforms, reverse_transforms, reverse_function, state_to_actions,
      print_outcomes)
-from utils.players import Player, MoveRecord
+from utils.players import Player, Human, MoveRecord
 
 INITIAL_VALUE = 0.5
 

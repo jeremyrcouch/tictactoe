@@ -1,7 +1,7 @@
 import numpy as np
 from typing import List, Tuple
 
-from utils.players import Player
+from utils.players import Player, Human
 
 
 class Game:
@@ -126,7 +126,7 @@ def play_game(game: Game, player1: Player, player2: Player, first: int = None):
             break
         move = cur_player.play(game.turn, game)
         valid = game.mark(move, game.turn)
-        if not valid:
+        if not valid and not isinstance(cur_player, Human):
             break
         cur_player.record_move(prev_state, move, prev_turn)
 

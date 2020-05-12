@@ -206,22 +206,46 @@ class TablePlayer(Player):
 
 
 if __name__ == 'main':
-    # TODO: reward with each move
-
-    # TODO: when to update alpha? lower over time?
-    # we can quickly hit a terminal, but then lose a ton with one bad outcome
-    # lowering alpha over time fights this
-
-    # what about player1 and player2 processing rewards, then play against rando player
-    # will they learn faster/better against smart competition?
-
     init_value_map = initialize_value_map(INITIAL_VALUE)
     player1 = TablePlayer(init_value_map)
     player2 = TablePlayer(init_value_map)
 
+    # we can quickly hit a terminal, but then lose a ton with one bad outcome
+    # lowering alpha over time fights this
     ALPHA_DECREASE_RATE = 0.25
     ALPHA_DECREASE_GAMES = 10000
+
+    # first round of training: vs other player who is being trained
+    # idea: learn faster vs smarter opponent
     trains = []
+    for i in range(30000):
+        if (i+1)%ALPHA_DECREASE_GAMES == 0:
+            player1.alpha *= ALPHA_DECREASE_RATE
+            player2.alpha *= ALPHA_DECREASE_RATE
+        game = Game()
+        play_game(game, player1, player2)
+        player1.process_reward(game.won, game.ind_to_loc)
+        player2.process_reward(-game.won, game.ind_to_loc)
+        trains.append(game.won)
+
+    # second round of training: vs random opponent
+    # idea: see if training has plateaued
+    # re-run until plateaued
+    refines = []
+    player1.alpha = 0.5
+    player3 = TablePlayer(init_value_map)
+    for i in range(30000):
+        if (i+1)%ALPHA_DECREASE_GAMES == 0:
+            player1.alpha *= ALPHA_DECREASE_RATE
+        game = Game()
+        play_game(game, player1, player3)
+        player1.process_reward(game.won, game.ind_to_loc)
+        refines.append(game.won)
+
+    # third round of training: vs other player who is being trained
+    # idea: see if more room to grow
+    player1.alpha = 0.5
+    player2.alpha = 0.5
     for i in range(30000):
         if (i+1)%ALPHA_DECREASE_GAMES == 0:
             player1.alpha *= ALPHA_DECREASE_RATE
@@ -234,11 +258,10 @@ if __name__ == 'main':
 
     tests = []
     player1.explore = False
-    player3 = TablePlayer(init_value_map)
+    # player3 = TablePlayer(init_value_map)
     for _ in range(10000):
         game = Game()
-        play_game(game, player1, player3)
-        # player1.process_reward(game.won, game.ind_to_loc)
+        play_game(game, player1, player2)
         tests.append(game.won)
 
     print_outcomes(tests)

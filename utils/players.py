@@ -32,9 +32,9 @@ class Human(Player):
             loc: tuple of int, action (board location)
         """
 
-        # row = input('row: ')
-        # col = input('col: ')
-        # loc = (int(row), int(col))
         print(game.state)
-        loc = input('player {}, enter (row, col): '.format(marker))
+        print("player {}'s turn".format(marker))
+        row = input('row: ')
+        col = input('col: ')
+        loc = (int(row), int(col))
         return loc

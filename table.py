@@ -15,6 +15,25 @@ INITIAL_VALUE = 0.5
 ValueMod = namedtuple('ValueMod', ['state', 'move', 'previous', 'new'])
 
 
+def tuple_to_str(state: tuple) -> str:
+    return ''.join([str(s) for s in state])
+
+
+def str_to_tuple(state_str: str) -> tuple:
+    temp = [s for s in state_str]
+    state = []
+    i = 0
+    while i < len(temp):
+        try:
+            st = int(temp[i])
+            i += 1
+        except ValueError:
+            st = int(''.join(temp[i:i+2]))
+            i += 2
+        state.append(st)
+    return tuple(state)
+
+
 def initialize_value_map(init_val: float) -> dict:
     """Initialize a value map.
 

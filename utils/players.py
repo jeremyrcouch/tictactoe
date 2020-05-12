@@ -2,8 +2,6 @@ from collections import namedtuple
 import numpy as np
 from typing import List, Tuple, Union
 
-from utils.helpers import Game
-
 
 MoveRecord = namedtuple('MoveRecord', ['state', 'move', 'marker'])
 
@@ -23,7 +21,7 @@ class Human(Player):
     def __init__(self):
         self.buffer = []
 
-    def play(self, marker: int, game: Game) -> Tuple[int]:
+    def play(self, marker: int, game) -> Tuple[int]:
         """Player's action during their turn.
 
         Args:

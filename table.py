@@ -134,6 +134,7 @@ def collect_values(value_map: dict) -> List[float]:
     return values
 
 
+# TODO: just return distribution
 def print_value_map_distribution(value_map: dict, bounds: List[float] = None):
     """Print percent of values that fall in ranges."""
     if not bounds:
@@ -207,6 +208,12 @@ class TablePlayer(Player):
         if reward == 0:
             return None
         
+        ### Cascading Rewards ###
+        # this approach cascades a reward backwards through moves
+        # less reward is given to earlier moves
+        # you have to be mindful of the moves in the buffer so you only apply rewards to relevant moves
+        # with only a non-zero reward at the end of the game, this behaves the same whether
+        #     rewards given every move or per game
         discount = 1
         # terminal = 0 if reward < 0 else 1
         reward_mods = []
@@ -231,6 +238,39 @@ class TablePlayer(Player):
             discount *= self._discount_perc_decrease
             mod = ValueMod(state=match_state, move=adj_move, previous=current, new=updated)
             reward_mods.append(mod)
+        ###
+
+        ### Bellman Equation ###
+        # maximum future reward for this state is the current reward
+        #     plus the maximum future reward of the next state
+        # Q[s,a] = Q[s,a] + α*(r + γ*np.max(Q[s1,:]) - Q[s,a])
+        # TODO: discount player parameter?
+        # TODO: should we initialize won/lost states to proper values?
+        #    - currently, they'll be 0.5 and never change as we'll never take action from them
+        #    - Q[s, a] = 0.5 + 0.5(1 + 0.75*0.5 - 0.5) = 0.5 + 0.5*(0.875) = 
+        #    - Q[s, a] = 1 + 0.5(1 + 0.75*0.5 - 1) = 1 + 0.5*(0.375) = 
+        # discount = 0.75
+        # entry = self.buffer[-1]
+        # match_state, transform = state_lookup(entry.state, self.value_map)
+        # action_values = self.value_map[match_state][entry.marker]
+        # adj_values = reverse_transforms(action_values, transform, ind_to_loc)
+        # current = adj_values[entry.move]
+
+        # new_state = np.copy(entry.state)
+        # new_state[entry.move[0], entry.move[1]] = entry.marker
+        # new_match_state, _ = state_lookup(new_state, self.value_map)
+        # new_action_values = self.value_map[new_match_state][entry.marker]
+        # max_future = max([new_action_values[a] for a in new_action_values])
+
+        # updated = np.clip(current + self.alpha*(reward + (discount*max_future - current)),
+        #                   a_min=0, a_max=1)
+        # undo = transform
+        # undo['args'] = {k: -undo['args'][k] for k in undo['args']}
+        # adj_move = [k for k in reverse_transforms({entry.move: 0}, undo, ind_to_loc)][0]
+        # self.value_map[match_state][entry.marker][adj_move] = updated
+        # mod = ValueMod(state=match_state, move=adj_move, previous=current, new=updated)
+        # reward_mods = [mod]
+        ###
 
         return reward_mods
 
@@ -254,8 +294,8 @@ if __name__ == 'main':
             player2.alpha *= ALPHA_DECREASE_RATE
         game = Game()
         play_game(game, player1, player2)
-        player1.process_reward(game.won, game.ind_to_loc)
-        player2.process_reward(-game.won, game.ind_to_loc)
+        # _ = player1.process_reward(game.won, game.ind_to_loc)
+        # _ = player2.process_reward(-game.won, game.ind_to_loc)
         trains.append(game.won)
 
     # second round of training: vs random opponent
@@ -269,7 +309,7 @@ if __name__ == 'main':
             player1.alpha *= ALPHA_DECREASE_RATE
         game = Game()
         play_game(game, player1, player3)
-        player1.process_reward(game.won, game.ind_to_loc)
+        # _ = player1.process_reward(game.won, game.ind_to_loc)
         refines.append(game.won)
 
     # third round of training: vs other player who is being trained
@@ -282,8 +322,8 @@ if __name__ == 'main':
             player2.alpha *= ALPHA_DECREASE_RATE
         game = Game()
         play_game(game, player1, player2)
-        player1.process_reward(game.won, game.ind_to_loc)
-        player2.process_reward(-game.won, game.ind_to_loc)
+        # _ = player1.process_reward(game.won, game.ind_to_loc)
+        # _ = player2.process_reward(-game.won, game.ind_to_loc)
         trains.append(game.won)
 
     tests = []

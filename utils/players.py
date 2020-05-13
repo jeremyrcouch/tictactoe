@@ -11,6 +11,7 @@ class Player:
         self.buffer = []
         self.alpha = 0.5
         self.explore = True  # False -> exploit
+        self.accepting_rewards = True
 
     def record_move(self, state: np.ndarray, move: Tuple[int], marker: int):
         record = MoveRecord(state=state, move=move, marker=marker)
@@ -20,6 +21,7 @@ class Player:
 class Human(Player):
     def __init__(self):
         self.buffer = []
+        self.accepting_rewards = False
 
     def play(self, marker: int, game) -> Tuple[int]:
         """Player's action during their turn.

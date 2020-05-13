@@ -7,6 +7,27 @@ from utils.helpers import (Game, tuple_to_str, str_to_tuple, array_in_list, movi
 
 
 @pytest.mark.parametrize(
+    "won, expected",
+    [
+        pytest.param(1, 1, id="won"),
+        pytest.param(-1, -1, id="lost"),
+        pytest.param(0, 0, id="tie-or-not-done")
+    ],
+)
+def test_Game_determine_reward(won, expected):
+    # arrange
+    game = Game()
+    game.won = won
+    marker = 1
+
+    # act
+    reward = game.determine_reward(marker)
+
+    # assert
+    assert reward == expected
+
+
+@pytest.mark.parametrize(
     "loc, marker, expected",
     [
         pytest.param((0, 0), 2, False, id="invalid-marker"),
@@ -24,7 +45,7 @@ def test_Game_mark(loc, marker, expected):
     prev_mark = game.state[loc[0], loc[1]]
 
     # act
-    valid = game.mark(loc, marker)
+    valid, reward = game.mark(loc, marker)
     expected_turn = int(marker*-1) if valid else prev_turn
     expected_mark = marker if valid else prev_mark
 

@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 from utils.players import Player, Human
 
@@ -20,7 +20,24 @@ class Game:
         self.won = self.empty_marker
         self.turn = self.empty_marker
 
-    def mark(self, loc: Tuple[int], marker: int) -> bool:
+    def determine_reward(self, marker: int) -> Union[int, float]:
+        """Reward criteria for game.
+
+        Args:
+            marker: int, player's marker for this game
+        
+        Returns:
+            int or float, reward
+        """
+
+        if self.won == marker:
+            return 1
+        elif self.won in self.valid_markers:
+            return -1
+        else:
+            return 0
+    
+    def mark(self, loc: Tuple[int], marker: int) -> (bool, Union[int, float]):
         """Take a player's attempted move and, if valid, apply it to the game state.
 
         Args:
@@ -29,6 +46,7 @@ class Game:
 
         Returns:
             bool, True if move was valid - False otherwise
+            reward: int or float, reward given move
         """
 
         if marker not in self.valid_markers:
@@ -36,21 +54,21 @@ class Game:
                    .format(marker, self.valid_markers))
             # raise ValueError(msg)
             print(msg)
-            return False
+            return False, 0
         if (marker != self.turn) and (self.turn in self.valid_markers):
-            msg = "It's {}'s turn".format(self.turn)
-            # raise ValueError(msg)
-            print(msg)
-            return False
+            print("It's {}'s turn".format(self.turn))
+            return False, 0
         if self.state[loc[0], loc[1]] != 0:
-            msg = 'Spot is already marked'
-            # raise ValueError(msg)
-            print(msg)
-            return False
+            print('Spot is already marked')
+            return False, 0
+        if self.done:
+            print('Game is already over')
+            return False, 0
         self.state[loc[0], loc[1]] = marker
         self.turn = int(marker*-1)
         self._update_done()
-        return True
+        reward = self.determine_reward(marker)
+        return True, reward
 
     def _update_done(self):
         filled_spaces = np.sum(self.state != self.empty_marker)
@@ -58,7 +76,7 @@ class Game:
         self._update_won()
         if full_board or self.won:
             self.done = True
-            self.turn = self.empty_marker
+            # self.turn = self.empty_marker
         
     def _update_won(self):
         for marker in self.valid_markers:
@@ -93,7 +111,7 @@ def str_to_tuple(state_str: str) -> tuple:
         state.append(st)
     return tuple(state)
 
-    
+
 # not currently needed, keeping for reference
 def array_in_list(arr: np.ndarray, arr_list: List[np.ndarray]):
    return next((True for elem in arr_list if np.array_equal(elem, arr)), False)
@@ -139,17 +157,20 @@ def play_game(game: Game, player1: Player, player2: Player, first: int = None):
         prev_state = np.copy(game.state)
         prev_turn = game.turn
         # defining player1's marker as 1
-        if game.turn == 1:
-            cur_player = player1
-        elif game.turn == -1:
-            cur_player = player2
-        else:
-            break
+        cur_player = player1 if game.turn == 1 else player2
         move = cur_player.play(game.turn, game)
-        valid = game.mark(move, game.turn)
+        valid, reward = game.mark(move, game.turn)
         if not valid and not isinstance(cur_player, Human):
             break
         cur_player.record_move(prev_state, move, prev_turn)
+        if cur_player.accepting_rewards:
+            _ = cur_player.process_reward(reward, game.ind_to_loc)
+    
+    # reward for player who did not make the last move (won/lost/tie)
+    cur_player = player1 if game.turn == 1 else player2
+    if cur_player.accepting_rewards:
+        reward = game.determine_reward(game.turn)
+        _ = cur_player.process_reward(reward, game.ind_to_loc)
 
 
 def state_to_actions(state: Tuple[int], ind_to_loc: List[Tuple], empty: str) -> List[Tuple]:
@@ -259,6 +280,7 @@ def reverse_function(loc: Tuple[int], ind_to_loc: List[Tuple],
     return new_loc
 
 
+# TODO: just return outcomes
 def print_outcomes(wins: list):
     total = len(wins)
     print('win: {:.1%}, lose: {:.1%}, tie: {:.1%}'.format(

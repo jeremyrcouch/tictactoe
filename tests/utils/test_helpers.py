@@ -1,8 +1,9 @@
 import numpy as np
 import pytest
 
-from utils.helpers import (Game, array_in_list, moving_average, state_to_actions,
-    check_states, state_transforms, reverse_transforms, reverse_function, play_game)
+from utils.helpers import (Game, tuple_to_str, str_to_tuple, array_in_list, moving_average,
+    state_to_actions, check_states, state_transforms, reverse_transforms, reverse_function,
+    play_game)
 
 
 @pytest.mark.parametrize(
@@ -72,6 +73,40 @@ def test_Game_update_won(state, expected):
 
     # assert
     assert game.won == expected
+
+
+@pytest.mark.parametrize(
+    "tupe, expected",
+    [
+        pytest.param(tuple(), '', id="empty"),
+        pytest.param((0, -1, 1, 0, -1, 1, 1, 0, -1), '0-110-1110-1', id="full")
+    ],
+)
+def test_tuple_to_str(tupe, expected):
+    # arrange
+    # act
+    string = tuple_to_str(tupe)
+
+    # assert
+    assert isinstance(string, str)
+    assert string == expected
+
+
+@pytest.mark.parametrize(
+    "string, expected",
+    [
+        pytest.param('', tuple(), id="empty"),
+        pytest.param('0-110-1110-1', (0, -1, 1, 0, -1, 1, 1, 0, -1), id="full")
+    ],
+)
+def test_str_to_tuple(string, expected):
+    # arrange
+    # act
+    tupe = str_to_tuple(string)
+
+    # assert
+    assert isinstance(tupe, tuple)
+    assert tupe == expected
 
 
 @pytest.mark.skip(reason='side effects')

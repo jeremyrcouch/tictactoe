@@ -1,16 +1,22 @@
+import json
 import numpy as np
 import pytest
 
-from table import (INITIAL_VALUE, initialize_value_map, state_lookup, TablePlayer, ValueMod)
-from utils.helpers import Game
+from table import (INITIAL_VALUE, initialize_value_map, format_value_map,
+    state_lookup, TablePlayer, ValueMod)
+from utils.helpers import Game, str_to_tuple, tuple_to_str
 from utils.players import MoveRecord
 
 
-# TODO: load pre-computed initial value map from file
-# issue: can't dump to json with tuple keys
+DATA_PATH = 'tests/data/'
+
+
 @pytest.fixture(scope='module')
 def value_map():
-    return initialize_value_map(INITIAL_VALUE)
+    with open('{}init_value_map.json'.format(DATA_PATH), 'r') as fp:
+        load_map = json.load(fp)
+    return format_value_map(load_map, str_to_tuple)
+    # return initialize_value_map(INITIAL_VALUE)
 
 
 def test_initialize_value_map(value_map):
@@ -25,6 +31,18 @@ def test_initialize_value_map(value_map):
     # assert
     assert isinstance(value_map, dict)
     assert test_value == INITIAL_VALUE
+
+
+def test_format_value_map(value_map):
+    # arrange
+    # act
+    mod_map = format_value_map(value_map, tuple_to_str)
+    unmod_map = format_value_map(mod_map, str_to_tuple)
+
+    # assert
+    assert len(value_map) == len(mod_map)
+    assert len(unmod_map) == len(value_map)
+    assert unmod_map == value_map
 
 
 def test_state_lookup(value_map):

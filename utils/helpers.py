@@ -73,6 +73,27 @@ class Game:
                 break
 
 
+def tuple_to_str(state: tuple) -> str:
+    """(1, 0, -1) -> '10-1'"""
+    return ''.join([str(s) for s in state])
+
+
+def str_to_tuple(state_str: str) -> tuple:
+    """'10-1' -> (1, 0, -1)"""
+    temp = [s for s in state_str]
+    state = []
+    i = 0
+    while i < len(temp):
+        try:
+            st = int(temp[i])
+            i += 1
+        except ValueError:
+            st = int(''.join(temp[i:i+2]))
+            i += 2
+        state.append(st)
+    return tuple(state)
+
+    
 # not currently needed, keeping for reference
 def array_in_list(arr: np.ndarray, arr_list: List[np.ndarray]):
    return next((True for elem in arr_list if np.array_equal(elem, arr)), False)

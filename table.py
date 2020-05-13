@@ -6,32 +6,13 @@ from typing import List, Tuple, Union
 
 from utils.helpers import (Game, play_game, moving_average, state_transforms,
      check_states, state_transforms, reverse_transforms, reverse_function, state_to_actions,
-     print_outcomes)
+     print_outcomes, tuple_to_str, str_to_tuple)
 from utils.players import Player, Human, MoveRecord
 
 INITIAL_VALUE = 0.5
 
 
 ValueMod = namedtuple('ValueMod', ['state', 'move', 'previous', 'new'])
-
-
-def tuple_to_str(state: tuple) -> str:
-    return ''.join([str(s) for s in state])
-
-
-def str_to_tuple(state_str: str) -> tuple:
-    temp = [s for s in state_str]
-    state = []
-    i = 0
-    while i < len(temp):
-        try:
-            st = int(temp[i])
-            i += 1
-        except ValueError:
-            st = int(''.join(temp[i:i+2]))
-            i += 2
-        state.append(st)
-    return tuple(state)
 
 
 def initialize_value_map(init_val: float) -> dict:
@@ -86,6 +67,35 @@ def initialize_value_map(init_val: float) -> dict:
     return init_value_map
 
 
+def format_value_map(value_map: dict, key_func):
+    """Format value map for saving or use.
+    To save:
+        with open('value_map.json', 'w') as fp:
+            json.dump(save_map, fp)
+    To load:
+        with open('value_map.json', 'r') as fp:
+            load_map = json.load(fp)
+    
+    Args:
+        value_map: dict, value map
+        key_func: function to modify keys
+
+    Returns:
+        mod_map: dict, value map modified
+    """
+
+    mod_map = {}
+    for s in value_map:
+        mark_map = {}
+        for m in value_map[s]:
+            action_map = {}
+            for a in value_map[s][m]:
+                action_map[key_func(a)] = value_map[s][m][a]
+            mark_map[int(m)] = action_map
+        mod_map[key_func(s)] = mark_map
+    return mod_map
+
+
 def state_lookup(state: np.ndarray, value_map: dict) -> (dict, dict):
     """Finding matching state in value map.
 
@@ -124,11 +134,12 @@ def collect_values(value_map: dict) -> List[float]:
     return values
 
 
-def print_value_map_distribution(value_map: dict):
+def print_value_map_distribution(value_map: dict, bounds: List[float] = None):
     """Print percent of values that fall in ranges."""
+    if not bounds:
+        bounds = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01]
     values = collect_values(value_map)
     total = len(values)
-    bounds = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01]
     for low, up in zip(bounds[:-1], bounds[1:]):
         count = len([v for v in values if ((v >= low) and (v < up))])
         print('{} to {}: {:.2%}'.format(low, up, count/total))
@@ -225,7 +236,7 @@ class TablePlayer(Player):
 
 
 if __name__ == 'main':
-    init_value_map = initialize_value_map(INITIAL_VALUE)
+    init_value_map = initialize_value_map(INITIAL_VALUE)    
     player1 = TablePlayer(init_value_map)
     player2 = TablePlayer(init_value_map)
 
@@ -282,5 +293,8 @@ if __name__ == 'main':
         game = Game()
         play_game(game, player1, player2)
         tests.append(game.won)
-
     print_outcomes(tests)
+
+    # save_map = format_value_map(player1.value_map, tuple_to_str)
+    # with open('value_map.json', 'w') as fp:
+    #     json.dump(save_map, fp)

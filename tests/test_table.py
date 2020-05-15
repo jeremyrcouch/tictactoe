@@ -2,8 +2,8 @@ import json
 import numpy as np
 import pytest
 
-from table import (INITIAL_VALUE, initialize_value_map, format_value_map,
-    state_lookup, TablePlayer, ValueMod)
+from table import (initialize_value_map, format_value_map,
+    state_lookup, collect_values, TablePlayer, ValueMod)
 from utils.helpers import Game, str_to_tuple, tuple_to_str
 from utils.players import MoveRecord
 
@@ -21,16 +21,9 @@ def value_map():
 
 def test_initialize_value_map(value_map):
     # arrange
-    marker = 1
-
     # act
-    state_key = [s for s in value_map if len(value_map[s][marker]) > 0][0]
-    action_key = [a for a in value_map[state_key][marker]][0]
-    test_value = value_map[state_key][marker][action_key]
-
     # assert
     assert isinstance(value_map, dict)
-    assert test_value == INITIAL_VALUE
 
 
 def test_format_value_map(value_map):
@@ -67,6 +60,29 @@ def test_state_lookup_no_match(value_map):
     # act + assert
     with pytest.raises(ValueError):
         _ = state_lookup(state, value_map)
+
+
+@pytest.mark.parametrize(
+    "terminal, expected",
+    [
+        pytest.param(True, 7, id="include-terminal"),
+        pytest.param(False, 5, id="no-terminal")
+    ],
+)
+def test_collect_values(terminal, expected):
+    # arrange
+    val = 0.5
+    value_map = {
+        (0, 0): {1: {(0, 0): val, (0, 1): val}, -1: {(0, 0): val, (0, 1): val}},
+        (1, 0): {1: {}, -1: {(0, 1): val}},
+        (1, -1): {1: val, -1: val}
+    }
+
+    # act
+    values = collect_values(value_map, include_terminal=terminal)
+
+    # assert
+    assert len(values) == expected
 
 
 def test_TablePlayer_play(value_map):

@@ -79,6 +79,7 @@ class Game:
             # self.turn = self.empty_marker
         
     def _update_won(self):
+        winners = []
         for marker in self.valid_markers:
             # making an assumption about def of valid_markers here
             win_sum = marker*self.board_shape[0]
@@ -87,8 +88,11 @@ class Game:
             diag1 = np.sum(self.state.diagonal()) == win_sum
             diag2 = np.sum(np.fliplr(self.state).diagonal()) == win_sum
             if any([vert, horiz, diag1, diag2]):
-                self.won = marker
-                break
+                winners.append(marker)
+        if len(winners) > 1:
+            raise ValueError('More than 1 winner.')
+        elif len(winners) == 1:
+            self.won = winners[0]
 
 
 def tuple_to_str(state: tuple) -> str:

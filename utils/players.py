@@ -9,7 +9,7 @@ MoveRecord = namedtuple('MoveRecord', ['state', 'move', 'marker'])
 class Player:
     def __init__(self, value_map: dict):
         self.buffer = []
-        self.alpha = 0.5
+        self.alpha = 0.75
         self.explore = True  # False -> exploit
         self.accepting_rewards = True
 

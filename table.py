@@ -27,18 +27,17 @@ def initialize_value_map(init_val: float) -> dict:
 
     prod_combs = product(Game.valid_markers + [Game.empty_marker],
                          repeat=Game.board_shape[0]**2)
-    all_combs = [pc for pc in prod_combs]
-    valid_combs = [c for c in all_combs if abs(sum(c)) < 2]
+    valid_combs = [pc for pc in prod_combs if abs(sum(pc)) < 2]
 
     non_dupes = []
-    for c in valid_combs:
-        swap = tuple([elem*-1 for elem in c])
+    for vc in valid_combs:
+        swap = tuple([elem*-1 for elem in vc])
         if swap not in non_dupes:
-            non_dupes.append(c)
+            non_dupes.append(vc)
 
     combs = []
-    for c in non_dupes:
-        c_box = np.reshape(c, Game.board_shape)
+    for nd in non_dupes:
+        c_box = np.reshape(nd, Game.board_shape)
         rot90 = np.rot90(c_box)
         if tuple(rot90.flatten()) in combs:
             continue
@@ -54,15 +53,43 @@ def initialize_value_map(init_val: float) -> dict:
         ud = np.flipud(c_box)
         if tuple(ud.flatten()) in combs:
             continue
-        combs.append(c)
+        combs.append(nd)
+
+    # can't have more than one valid won state
+    states = []
+    for c in combs:
+        game = Game()
+        game.state = np.reshape(c, Game.board_shape)
+        try:
+            game._update_won()
+            states.append(c)
+        except ValueError:
+            pass
 
     init_value_map = {
-        c: {
+        s: {
             m: {
-                a: init_val for a in state_to_actions(c, Game.ind_to_loc, Game.empty_marker)
+                a: init_val for a in state_to_actions(s, Game.ind_to_loc, Game.empty_marker)
             } for m in [-1, 1]
-        } for c in combs
+        } for s in states
     }
+
+    for s in init_value_map:
+        game = Game()
+        game.state = np.reshape(s, game.board_shape)
+        game._update_won()
+        for m in init_value_map[s]:
+            # won state: no actions, just reward value
+            if game.won in game.valid_markers:
+                init_value_map[s][m] = 1 if m == game.won else 0
+            # full board: no actions, just initial value
+            elif len(init_value_map[s][m]) == 0:
+                init_value_map[s][m] = INITIAL_VALUE
+            # cannot be marker's turn: no actions
+            # NOTE: I don't explicitly reverse transform a marker swap
+            #       so can't assume markers will match
+            # elif sum(s) == m:
+            #     init_value_map[s][m] = {}
 
     return init_value_map
 
@@ -88,9 +115,12 @@ def format_value_map(value_map: dict, key_func):
     for s in value_map:
         mark_map = {}
         for m in value_map[s]:
-            action_map = {}
-            for a in value_map[s][m]:
-                action_map[key_func(a)] = value_map[s][m][a]
+            if isinstance(value_map[s][m], dict):
+                action_map = {}
+                for a in value_map[s][m]:
+                    action_map[key_func(a)] = value_map[s][m][a]
+            else:
+                action_map = value_map[s][m]
             mark_map[int(m)] = action_map
         mod_map[key_func(s)] = mark_map
     return mod_map
@@ -116,11 +146,12 @@ def state_lookup(state: np.ndarray, value_map: dict) -> (dict, dict):
     raise ValueError('No matching state found')
 
 
-def collect_values(value_map: dict) -> List[float]:
+def collect_values(value_map: dict, include_terminal: bool = False) -> List[float]:
     """Collect value map values.
 
     Args:
         value_map: dict, value map
+        include_terminal: bool, True to include terminal (full board and won states)
 
     Returns:
         values: list of float
@@ -129,8 +160,11 @@ def collect_values(value_map: dict) -> List[float]:
     values = []
     for s in value_map:
         for m in value_map[s]:
-            for a in value_map[s][m]:
-                values.append(value_map[s][m][a])
+            if isinstance(value_map[s][m], dict):
+                for a in value_map[s][m]:
+                    values.append(value_map[s][m][a])
+            elif include_terminal:
+                values.append(value_map[s][m])
     return values
 
 
@@ -138,7 +172,8 @@ def collect_values(value_map: dict) -> List[float]:
 def print_value_map_distribution(value_map: dict, bounds: List[float] = None):
     """Print percent of values that fall in ranges."""
     if not bounds:
-        bounds = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01]
+        bounds = list(np.linspace(0, 1, 11))
+        bounds[-1] += 0.01
     values = collect_values(value_map)
     total = len(values)
     for low, up in zip(bounds[:-1], bounds[1:]):
@@ -150,7 +185,7 @@ class TablePlayer(Player):
     def __init__(self, value_map: dict):
         super().__init__(self)
         self.value_map = deepcopy(value_map)
-        self._min_reward_delta = 1/128
+        self._min_reward_delta = 1/64
         self._discount_perc_decrease = 0.5
 
     def play(self, marker: int, game: Game) -> Tuple[int]:
@@ -249,6 +284,7 @@ class TablePlayer(Player):
         #    - currently, they'll be 0.5 and never change as we'll never take action from them
         #    - Q[s, a] = 0.5 + 0.5(1 + 0.75*0.5 - 0.5) = 0.5 + 0.5*(0.875) = 
         #    - Q[s, a] = 1 + 0.5(1 + 0.75*0.5 - 1) = 1 + 0.5*(0.375) = 
+        #  ACTUALLY, these will have {} for action -> value maps since
         # discount = 0.75
         # entry = self.buffer[-1]
         # match_state, transform = state_lookup(entry.state, self.value_map)
@@ -260,7 +296,10 @@ class TablePlayer(Player):
         # new_state[entry.move[0], entry.move[1]] = entry.marker
         # new_match_state, _ = state_lookup(new_state, self.value_map)
         # new_action_values = self.value_map[new_match_state][entry.marker]
-        # max_future = max([new_action_values[a] for a in new_action_values])
+        # if isinstance(new_action_values, dict):
+        #     max_future = max([new_action_values[a] for a in new_action_values])
+        # else:
+        #     max_future = new_action_values
 
         # updated = np.clip(current + self.alpha*(reward + (discount*max_future - current)),
         #                   a_min=0, a_max=1)

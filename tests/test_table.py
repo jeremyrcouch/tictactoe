@@ -2,7 +2,7 @@ import json
 import numpy as np
 import pytest
 
-from table import (initialize_value_map, format_value_map,
+from table import (initialize_value_map, format_value_map, value_map_distribution,
     state_lookup, collect_values, TablePlayer, ValueMod)
 from utils.helpers import Game, str_to_tuple, tuple_to_str
 from utils.players import MoveRecord
@@ -83,6 +83,33 @@ def test_collect_values(terminal, expected):
 
     # assert
     assert len(values) == expected
+
+
+@pytest.mark.parametrize(
+    "bounds, expected",
+    [
+        pytest.param(None, None, id="none-bounds"),
+        pytest.param([0, 0.33, 0.66, 1.01],
+                     {(0, 0.33): 0.4, (0.33, 0.66): 0.0, (0.66, 1.01): 0.6}, id="bounds")
+    ],
+)
+def test_value_map_distribution(bounds, expected):
+    # arrange
+    value_map = {
+        (0, 0): {1: {(0, 0): 0.25, (0, 1): 0.75}, -1: {(0, 0): 0.25, (0, 1): 0.75}},
+        (1, 0): {1: {}, -1: {(0, 1): 0.75}},
+        (1, -1): {1: 0.5, -1: 0.5}
+    }
+
+    # act
+    dist = value_map_distribution(value_map, bounds=bounds)
+
+    # assert
+    if bounds is not None:
+        assert len(dist) == (len(bounds) -1)
+        for rng in expected:
+            assert expected[rng] == dist[rng]
+    assert sum(dist.values()) == 1
 
 
 def test_TablePlayer_play(value_map):

@@ -1,6 +1,8 @@
 import numpy as np
 from typing import List, Tuple, Union
 
+import matplotlib.pyplot as plt
+
 from utils.players import Player, Human
 
 
@@ -284,11 +286,69 @@ def reverse_function(loc: Tuple[int], ind_to_loc: List[Tuple],
     return new_loc
 
 
-# TODO: just return outcomes
-def print_outcomes(wins: list):
-    total = len(wins)
-    print('win: {:.1%}, lose: {:.1%}, tie: {:.1%}'.format(
-        len([w for w in wins if w == 1])/total,
-        len([w for w in wins if w == -1])/total,
-        len([w for w in wins if w == 0])/total
-    ))
+def value_frequencies(values: list):
+    """Frequency of values in list.
+
+    Args:
+        values: list
+    
+    Returns:
+        freqs: dict, frequency of each value
+    """
+
+    vals = np.array(values)
+    total = len(vals)
+    freqs = {}
+    for val in np.unique(vals):
+        freqs[val] = len(vals[vals == val])/total
+    return freqs
+
+
+def moving_value_frequencies(values: list, n: int = 1000):
+    """Calculate moving frequency of values.
+
+    Args:
+        values: list
+        n: int, size of moving window (number of values)
+
+    Returns:
+        freqs: dict, moving frequencies
+    """
+
+    if n < 0:
+        raise ValueError('n must be >= 0')
+
+    unique_vals = set(values)
+    freqs = {val: [] for val in unique_vals}
+    for i in range(len(values) - n + 1):
+        window_freqs = value_frequencies(values[i:i+n])
+        for val in unique_vals:
+            freqs[val].append(window_freqs.get(val, 0))
+
+    return freqs
+
+
+def plot_outcome_frequencies(freqs: dict, order: list = None, labels: list = None):
+    """
+    """
+
+    if order is None:
+        if {1, 0, -1} == set([v for v in freqs]):
+            order = [1, 0, -1]
+        else:
+            order = [v for v in freqs]
+
+    if labels is None:
+        if {1, 0, -1} == set([v for v in freqs]):
+            labels = ['P1', 'Tie', 'P2']
+        else:
+            labels = [str(v) for v in freqs]
+    
+    y = [freqs[k] for k in order]
+    _, ax = plt.subplots()
+    ax.stackplot(range(len(y[0])), y, labels=labels, alpha=0.4)
+    plt.legend(loc='lower left', framealpha=0.2)
+    plt.xlabel('Game #')
+    plt.ylabel('Frequency')
+    plt.xlim([0, len(y[0])])
+    plt.ylim([0, 1])

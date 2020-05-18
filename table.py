@@ -6,7 +6,8 @@ from typing import List, Tuple, Union
 
 from utils.helpers import (Game, play_game, moving_average, state_transforms,
      check_states, state_transforms, reverse_transforms, reverse_function, state_to_actions,
-     print_outcomes, tuple_to_str, str_to_tuple)
+     tuple_to_str, str_to_tuple, value_frequencies, moving_value_frequencies,
+     plot_outcome_frequencies)
 from utils.players import Player, Human, MoveRecord
 
 INITIAL_VALUE = 0.5
@@ -168,17 +169,28 @@ def collect_values(value_map: dict, include_terminal: bool = False) -> List[floa
     return values
 
 
-# TODO: just return distribution
-def print_value_map_distribution(value_map: dict, bounds: List[float] = None):
-    """Print percent of values that fall in ranges."""
+def value_map_distribution(value_map: dict, bounds: List[float] = None):
+    """Percent of values that fall in ranges.
+    
+    Args:
+        value_map: dict, value map
+        bound: list of float, boundaries to count values within
+        
+    Returns:
+        dist: dict, distribution values
+    """
+
     if not bounds:
         bounds = list(np.linspace(0, 1, 11))
         bounds[-1] += 0.01
     values = collect_values(value_map)
     total = len(values)
+    dist = {}
     for low, up in zip(bounds[:-1], bounds[1:]):
         count = len([v for v in values if ((v >= low) and (v < up))])
-        print('{} to {}: {:.2%}'.format(low, up, count/total))
+        dist[(low, up)] = count/total
+    
+    return dist
 
 
 class TablePlayer(Player):    
@@ -280,11 +292,6 @@ class TablePlayer(Player):
         #     plus the maximum future reward of the next state
         # Q[s,a] = Q[s,a] + α*(r + γ*np.max(Q[s1,:]) - Q[s,a])
         # TODO: discount player parameter?
-        # TODO: should we initialize won/lost states to proper values?
-        #    - currently, they'll be 0.5 and never change as we'll never take action from them
-        #    - Q[s, a] = 0.5 + 0.5(1 + 0.75*0.5 - 0.5) = 0.5 + 0.5*(0.875) = 
-        #    - Q[s, a] = 1 + 0.5(1 + 0.75*0.5 - 1) = 1 + 0.5*(0.375) = 
-        #  ACTUALLY, these will have {} for action -> value maps since
         # discount = 0.75
         # entry = self.buffer[-1]
         # match_state, transform = state_lookup(entry.state, self.value_map)
@@ -313,8 +320,13 @@ class TablePlayer(Player):
 
         return reward_mods
 
+# bellman vs cascade
+# - cascade is player1: win: 31.2%, lose: 13.9%, tie: 54.8%
+# - player1 wins MA got up to 0.3
+# TODO: combine bellman + cascade?
 
-if __name__ == 'main':
+
+if __name__ == '__main__':
     init_value_map = initialize_value_map(INITIAL_VALUE)    
     player1 = TablePlayer(init_value_map)
     player2 = TablePlayer(init_value_map)
@@ -333,8 +345,6 @@ if __name__ == 'main':
             player2.alpha *= ALPHA_DECREASE_RATE
         game = Game()
         play_game(game, player1, player2)
-        # _ = player1.process_reward(game.won, game.ind_to_loc)
-        # _ = player2.process_reward(-game.won, game.ind_to_loc)
         trains.append(game.won)
 
     # second round of training: vs random opponent
@@ -343,12 +353,12 @@ if __name__ == 'main':
     refines = []
     player1.alpha = 0.5
     player3 = TablePlayer(init_value_map)
+    player3.accepting_rewards = False
     for i in range(30000):
         if (i+1)%ALPHA_DECREASE_GAMES == 0:
             player1.alpha *= ALPHA_DECREASE_RATE
         game = Game()
         play_game(game, player1, player3)
-        # _ = player1.process_reward(game.won, game.ind_to_loc)
         refines.append(game.won)
 
     # third round of training: vs other player who is being trained
@@ -361,18 +371,17 @@ if __name__ == 'main':
             player2.alpha *= ALPHA_DECREASE_RATE
         game = Game()
         play_game(game, player1, player2)
-        # _ = player1.process_reward(game.won, game.ind_to_loc)
-        # _ = player2.process_reward(-game.won, game.ind_to_loc)
         trains.append(game.won)
 
     tests = []
     player1.explore = False
     # player3 = TablePlayer(init_value_map)
+    # player3.accepting_rewards = False
     for _ in range(10000):
         game = Game()
         play_game(game, player1, player2)
         tests.append(game.won)
-    print_outcomes(tests)
+    print(value_frequencies(tests))
 
     # save_map = format_value_map(player1.value_map, tuple_to_str)
     # with open('value_map.json', 'w') as fp:

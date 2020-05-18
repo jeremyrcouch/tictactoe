@@ -3,7 +3,7 @@ import pytest
 
 from utils.helpers import (Game, tuple_to_str, str_to_tuple, array_in_list, moving_average,
     state_to_actions, check_states, state_transforms, reverse_transforms, reverse_function,
-    play_game)
+    play_game, value_frequencies, moving_value_frequencies)
 
 
 @pytest.mark.parametrize(
@@ -45,7 +45,7 @@ def test_Game_mark(loc, marker, expected):
     prev_mark = game.state[loc[0], loc[1]]
 
     # act
-    valid, reward = game.mark(loc, marker)
+    valid, _ = game.mark(loc, marker)
     expected_turn = int(marker*-1) if valid else prev_turn
     expected_mark = marker if valid else prev_mark
 
@@ -130,11 +130,6 @@ def test_str_to_tuple(string, expected):
     assert tupe == expected
 
 
-@pytest.mark.skip(reason='side effects')
-def test_play_game():
-    pass
-
-
 @pytest.mark.parametrize(
     "arr, arr_list, expected",
     [
@@ -182,6 +177,11 @@ def test_moving_average_invalid_n():
     # act + assert
     with pytest.raises(ValueError):
         _ = moving_average(vals, n)
+
+
+@pytest.mark.skip(reason='side effects')
+def test_play_game():
+    pass
 
 
 def test_state_to_actions():
@@ -308,3 +308,59 @@ def test_reverse_function(loc, func, func_args, expected_loc):
 
     # assert
     assert new_loc == expected_loc
+
+
+def test_value_frequencies():
+    # arrange
+    values = [1, 0, 0, 0, -1, -1, 1, -1, 0, 0]
+    expected_values = set(np.unique(values))
+    expected_length = len(expected_values)
+    expected_freqs = {0: 0.5, 1: 0.2, -1: 0.3}
+
+    # act
+    freqs = value_frequencies(values)
+
+    # assert
+    assert len(freqs) == expected_length
+    assert set([v for v in freqs]) == expected_values
+    for v in expected_freqs:
+        assert expected_freqs[v] == freqs[v]
+    
+
+@pytest.mark.parametrize(
+    "vals, n, expected",
+    [
+        pytest.param([1, 0, 0, 0, -1, -1, 1, -1, 0, 0], 20,
+                     {0: [], 1: [], -1: []}, id="n>len(vals)"),
+        pytest.param([1, 0, 0, 0, -1, -1, 1, -1, 0, 0], 5,
+                     {0: [0.6, 0.6, 0.4, 0.2, 0.2, 0.4],
+                      1: [0.2, 0.0, 0.2, 0.2, 0.2, 0.2],
+                      -1: [0.2, 0.4, 0.4, 0.6, 0.6, 0.4]}, id="normal"),
+    ],
+)
+def test_moving_value_frequencies(vals, n, expected):
+    # arrange
+    expected_value_count = len(set(np.unique(vals)))
+
+    # act
+    freqs = moving_value_frequencies(vals, n=n)
+
+    # assert
+    assert len(freqs) == expected_value_count
+    for v in expected:
+        assert expected[v] == freqs[v]
+
+
+def test_moving_value_frequencies_invalid_n():
+    # arrange
+    n = -1
+    vals = [1, 2, 3]
+
+    # act + assert
+    with pytest.raises(ValueError):
+        _ = moving_value_frequencies(vals, n)
+
+
+@pytest.mark.skip(reason='plotting helper')
+def test_plot_outcome_frequencies():
+    pass

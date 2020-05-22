@@ -169,12 +169,12 @@ def play_game(game: Game, player1: Player, player2: Player, first: int = None):
         if not valid and not isinstance(cur_player, Human):
             break
         cur_player.record_move(prev_state, move, prev_turn)
-        if cur_player.accepting_rewards:
+        if cur_player.learning_rate > 0:
             _ = cur_player.process_reward(reward, game.ind_to_loc)
     
     # reward for player who did not make the last move (won/lost/tie)
     cur_player = player1 if game.turn == 1 else player2
-    if cur_player.accepting_rewards:
+    if cur_player.learning_rate > 0:
         reward = game.determine_reward(game.turn)
         _ = cur_player.process_reward(reward, game.ind_to_loc)
 
@@ -329,7 +329,12 @@ def moving_value_frequencies(values: list, n: int = 1000):
 
 
 def plot_outcome_frequencies(freqs: dict, order: list = None, labels: list = None):
-    """
+    """Show stacked plot of outcomes (player wins and ties).
+
+    Args:
+        freqs: dict, frequency of each outcome over games
+        order: list, specified order to display stacks in
+        labels: list, labels for outcomes
     """
 
     if order is None:

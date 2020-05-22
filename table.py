@@ -197,8 +197,8 @@ class TablePlayer(Player):
     def __init__(self, value_map: dict):
         super().__init__(self)
         self.value_map = deepcopy(value_map)
-        self._min_reward_delta = 1/64
-        self._discount_perc_decrease = 0.5
+        self.discount_rate = 0.9  # discount future rewards
+        self.temporal_discount_rate = 0.8  # discount credit assigned to moves in past
 
     def play(self, marker: int, game: Game) -> Tuple[int]:
         """Player's action during their turn.
@@ -215,7 +215,7 @@ class TablePlayer(Player):
         return loc
 
     def _policy(self, marker: int, game: Game) -> Tuple[int]:
-        # not using a model b/c tic-tac-toe is solved (not the point)
+        # not using a model b/c tic-tac-toe is solved (not the point of this exercise)
         # (model: predict future states and rewards in order to plan)
         
         # (value: total amount of reward expected to be received in future)
@@ -251,79 +251,60 @@ class TablePlayer(Player):
         Returns:
             reward_mods: list of ValueMod, modifications to value for each move
         """
-
-        if reward == 0:
-            return None
         
-        ### Cascading Rewards ###
-        # this approach cascades a reward backwards through moves
-        # less reward is given to earlier moves
-        # you have to be mindful of the moves in the buffer so you only apply rewards to relevant moves
-        # with only a non-zero reward at the end of the game, this behaves the same whether
-        #     rewards given every move or per game
-        discount = 1
-        # terminal = 0 if reward < 0 else 1
+        temporal_discount = 1
         reward_mods = []
-        for entry in self.buffer[::-1]:
+        # if the reward is 0, no update
+        #     UNLESS the temporal_discount_rate is 0
+        #     in this case, we need to process 0 rewards to transfer learning to earlier states
+        #     we could use eligibility traces to update each state on every move..
+        #     ..but that is less intuitive and won't be implemented here
+        # if there's a non-zero reward (win/loss), assign credit to all moves (temporal difference)
+        #     less credit is given to earlier moves, according to the temporal_discount_rate
+        if (reward == 0) and (self.temporal_discount_rate > 0):
+            return []
+        elif reward == 0:
+            entries = [self.buffer[-1]]
+        else:
+            entries = self.buffer[::-1]
+
+        for entry in entries:
+            # find the current value of (state, marker, move) combo
             match_state, transform = state_lookup(entry.state, self.value_map)
             action_values = self.value_map[match_state][entry.marker]
             adj_values = reverse_transforms(action_values, transform, ind_to_loc)
             current = adj_values[entry.move]
 
-            # Option A: percentage of delta with terminal value of direction
-            # issue: bigger deltas for rewards in the direction of the terminal value further from
-            # percent = abs(reward*discount*self.alpha)
-            # delta = max(self._min_reward_delta, abs((terminal - current)*percent))
-            # Option B: just add value
-            delta = max(self._min_reward_delta, abs(reward*discount*self.alpha))
+            # find the maximum value in the state resulting from the current move
+            new_state = np.copy(entry.state)
+            new_state[entry.move[0], entry.move[1]] = entry.marker
+            new_match_state, _ = state_lookup(new_state, self.value_map)
+            new_action_values = self.value_map[new_match_state][entry.marker]
+            if isinstance(new_action_values, dict):
+                max_future = max([new_action_values[a] for a in new_action_values])
+            else:
+                max_future = new_action_values
 
-            updated = np.clip(current + delta*np.sign(reward), a_min=0, a_max=1)
+            # use the Bellman equation to update the current value
+            # maximum future reward for this state is the current reward
+            #     plus the maximum future reward of the next state
+            # Q[s,a] = Q[s,a] + α*(r + γ*np.max(Q[s1,:]) - Q[s,a])
+            updated = np.clip(current + temporal_discount*self.learning_rate*(reward
+                + (self.discount_rate*max_future - current)),
+                a_min=0, a_max=1)
+
+            # reverse the transform to find the proper move to update.. and apply it
             undo = transform
             undo['args'] = {k: -undo['args'][k] for k in undo['args']}
             adj_move = [k for k in reverse_transforms({entry.move: 0}, undo, ind_to_loc)][0]
             self.value_map[match_state][entry.marker][adj_move] = updated
-            discount *= self._discount_perc_decrease
+
+            # update temporal discount and record modification to value map
+            temporal_discount *= self.temporal_discount_rate
             mod = ValueMod(state=match_state, move=adj_move, previous=current, new=updated)
             reward_mods.append(mod)
-        ###
-
-        ### Bellman Equation ###
-        # maximum future reward for this state is the current reward
-        #     plus the maximum future reward of the next state
-        # Q[s,a] = Q[s,a] + α*(r + γ*np.max(Q[s1,:]) - Q[s,a])
-        # TODO: discount player parameter?
-        # discount = 0.75
-        # entry = self.buffer[-1]
-        # match_state, transform = state_lookup(entry.state, self.value_map)
-        # action_values = self.value_map[match_state][entry.marker]
-        # adj_values = reverse_transforms(action_values, transform, ind_to_loc)
-        # current = adj_values[entry.move]
-
-        # new_state = np.copy(entry.state)
-        # new_state[entry.move[0], entry.move[1]] = entry.marker
-        # new_match_state, _ = state_lookup(new_state, self.value_map)
-        # new_action_values = self.value_map[new_match_state][entry.marker]
-        # if isinstance(new_action_values, dict):
-        #     max_future = max([new_action_values[a] for a in new_action_values])
-        # else:
-        #     max_future = new_action_values
-
-        # updated = np.clip(current + self.alpha*(reward + (discount*max_future - current)),
-        #                   a_min=0, a_max=1)
-        # undo = transform
-        # undo['args'] = {k: -undo['args'][k] for k in undo['args']}
-        # adj_move = [k for k in reverse_transforms({entry.move: 0}, undo, ind_to_loc)][0]
-        # self.value_map[match_state][entry.marker][adj_move] = updated
-        # mod = ValueMod(state=match_state, move=adj_move, previous=current, new=updated)
-        # reward_mods = [mod]
-        ###
 
         return reward_mods
-
-# bellman vs cascade
-# - cascade is player1: win: 31.2%, lose: 13.9%, tie: 54.8%
-# - player1 wins MA got up to 0.3
-# TODO: combine bellman + cascade?
 
 
 if __name__ == '__main__':
@@ -332,17 +313,18 @@ if __name__ == '__main__':
     player2 = TablePlayer(init_value_map)
 
     # we can quickly hit a terminal, but then lose a ton with one bad outcome
-    # lowering alpha over time fights this
-    ALPHA_DECREASE_RATE = 0.25
-    ALPHA_DECREASE_GAMES = 10000
+    # lowering learning_rate over time fights this
+    LR_DECREASE_RATE = 0.25
+    LR_DECREASE_GAMES = 10000
+    # TODO: decrease learning rate when win frequency stops increasing appreciably
 
     # first round of training: vs other player who is being trained
     # idea: learn faster vs smarter opponent
     trains = []
     for i in range(30000):
-        if (i+1)%ALPHA_DECREASE_GAMES == 0:
-            player1.alpha *= ALPHA_DECREASE_RATE
-            player2.alpha *= ALPHA_DECREASE_RATE
+        if (i+1)%LR_DECREASE_GAMES == 0:
+            player1.learning_rate *= LR_DECREASE_RATE
+            player2.learning_rate *= LR_DECREASE_RATE
         game = Game()
         play_game(game, player1, player2)
         trains.append(game.won)
@@ -351,37 +333,40 @@ if __name__ == '__main__':
     # idea: see if training has plateaued
     # re-run until plateaued
     refines = []
-    player1.alpha = 0.5
+    player1.learning_rate = 0.75
     player3 = TablePlayer(init_value_map)
-    player3.accepting_rewards = False
+    player3.learning_rate = 0
     for i in range(30000):
-        if (i+1)%ALPHA_DECREASE_GAMES == 0:
-            player1.alpha *= ALPHA_DECREASE_RATE
+        if (i+1)%LR_DECREASE_GAMES == 0:
+            player1.learning_rate *= LR_DECREASE_RATE
         game = Game()
         play_game(game, player1, player3)
         refines.append(game.won)
 
     # third round of training: vs other player who is being trained
     # idea: see if more room to grow
-    player1.alpha = 0.5
-    player2.alpha = 0.5
+    player1.learning_rate = 0.75
+    player2.learning_rate = 0.75
     for i in range(30000):
-        if (i+1)%ALPHA_DECREASE_GAMES == 0:
-            player1.alpha *= ALPHA_DECREASE_RATE
-            player2.alpha *= ALPHA_DECREASE_RATE
+        if (i+1)%LR_DECREASE_GAMES == 0:
+            player1.learning_rate *= LR_DECREASE_RATE
+            player2.learning_rate *= LR_DECREASE_RATE
         game = Game()
         play_game(game, player1, player2)
         trains.append(game.won)
 
     tests = []
     player1.explore = False
-    # player3 = TablePlayer(init_value_map)
-    # player3.accepting_rewards = False
+    player1.learning_rate = 0
+    # player2.learning_rate = 0
+    player3 = TablePlayer(init_value_map)
+    player3.learning_rate = 0
     for _ in range(10000):
         game = Game()
-        play_game(game, player1, player2)
+        play_game(game, player1, player3)
         tests.append(game.won)
-    print(value_frequencies(tests))
+    # print(value_frequencies(tests))
+    plot_outcome_frequencies(moving_value_frequencies(tests))
 
     # save_map = format_value_map(player1.value_map, tuple_to_str)
     # with open('value_map.json', 'w') as fp:

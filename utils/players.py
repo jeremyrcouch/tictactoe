@@ -1,6 +1,6 @@
 from collections import namedtuple
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Union
 
 
 MoveRecord = namedtuple('MoveRecord', ['state', 'move', 'marker'])
@@ -8,20 +8,21 @@ MoveRecord = namedtuple('MoveRecord', ['state', 'move', 'marker'])
 
 class Player:
     def __init__(self, value_map: dict):
-        self.buffer = []
-        self.alpha = 0.75
+        self.buffer = []  # holds player's moves during game
+        self.learning_rate = 0.8  # how quickly new rewards alter policy (0 -> no learning)
         self.explore = True  # False -> exploit
-        self.accepting_rewards = True
 
     def record_move(self, state: np.ndarray, move: Tuple[int], marker: int):
         record = MoveRecord(state=state, move=move, marker=marker)
         self.buffer.append(record)
+    
+    def process_reward(self, reward: Union[int, float]):
+        pass
 
 
 class Human(Player):
     def __init__(self):
         self.buffer = []
-        self.accepting_rewards = False
 
     def play(self, marker: int, game) -> Tuple[int]:
         """Player's action during their turn.

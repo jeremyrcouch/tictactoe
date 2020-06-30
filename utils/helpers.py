@@ -54,7 +54,6 @@ class Game:
         if marker not in self.valid_markers:
             msg = ('{} not one of the valid markers ({})'
                    .format(marker, self.valid_markers))
-            # raise ValueError(msg)
             print(msg)
             return False, 0
         if (marker != self.turn) and (self.turn in self.valid_markers):
@@ -78,12 +77,10 @@ class Game:
         self._update_won()
         if full_board or self.won:
             self.done = True
-            # self.turn = self.empty_marker
         
     def _update_won(self):
         winners = []
         for marker in self.valid_markers:
-            # making an assumption about def of valid_markers here
             win_sum = marker*self.board_shape[0]
             vert = any(np.sum(self.state, axis=0) == win_sum)
             horiz = any(np.sum(self.state, axis=1) == win_sum)
@@ -337,23 +334,30 @@ def plot_outcome_frequencies(freqs: dict, order: list = None, labels: list = Non
         labels: list, labels for outcomes
     """
 
+    font_size = 16
+
     if order is None:
         if {1, 0, -1} == set([v for v in freqs]):
             order = [1, 0, -1]
         else:
             order = [v for v in freqs]
+    else:
+        for outcome in order:
+            if outcome not in freqs:
+                freqs[outcome] = [0]*len(freqs[[v for v in freqs][0]])
 
     if labels is None:
         if {1, 0, -1} == set([v for v in freqs]):
-            labels = ['P1', 'Tie', 'P2']
+            labels = ['P1 Wins', 'Tie', 'P2 Wins']
         else:
             labels = [str(v) for v in freqs]
     
     y = [freqs[k] for k in order]
-    _, ax = plt.subplots()
+    _, ax = plt.subplots(figsize=(10, 6))
     ax.stackplot(range(len(y[0])), y, labels=labels, alpha=0.4)
-    plt.legend(loc='lower left', framealpha=0.2)
-    plt.xlabel('Game #')
-    plt.ylabel('Frequency')
+    plt.legend(loc='upper right', framealpha=0.2, fontsize=font_size-4)
+    plt.xlabel('Game #', fontsize=font_size)
+    plt.ylabel('Frequency', fontsize=font_size)
+    ax.tick_params(labelsize=font_size)
     plt.xlim([0, len(y[0])])
     plt.ylim([0, 1])

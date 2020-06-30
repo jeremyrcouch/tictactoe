@@ -215,13 +215,6 @@ class TablePlayer(Player):
         return loc
 
     def _policy(self, marker: int, game: Game) -> Tuple[int]:
-        # not using a model b/c tic-tac-toe is solved (not the point of this exercise)
-        # (model: predict future states and rewards in order to plan)
-        
-        # (value: total amount of reward expected to be received in future)
-        # "action choices are made based on value judgements"
-
-        # given state, determine actions and corresponding_values
         match_state, transform = state_lookup(game.state, self.value_map)
         action_values = self.value_map.get(match_state, None)[marker]
         adj_values = reverse_transforms(action_values, transform, game.ind_to_loc)
@@ -309,65 +302,84 @@ class TablePlayer(Player):
 
 if __name__ == '__main__':
     init_value_map = initialize_value_map(INITIAL_VALUE)    
-    player1 = TablePlayer(init_value_map)
-    player2 = TablePlayer(init_value_map)
+    agent = TablePlayer(init_value_map)
+    competitor = TablePlayer(init_value_map)
 
-    # we can quickly hit a terminal, but then lose a ton with one bad outcome
-    # lowering learning_rate over time fights this
-    LR_DECREASE_RATE = 0.25
-    LR_DECREASE_GAMES = 10000
-    # TODO: decrease learning rate when win frequency stops increasing appreciably
-
-    # first round of training: vs other player who is being trained
-    # idea: learn faster vs smarter opponent
-    trains = []
-    for i in range(30000):
-        if (i+1)%LR_DECREASE_GAMES == 0:
-            player1.learning_rate *= LR_DECREASE_RATE
-            player2.learning_rate *= LR_DECREASE_RATE
+    # train against a player who is learning how to beat you
+    init_trains = []
+    for i in range(50000):
         game = Game()
-        play_game(game, player1, player2)
-        trains.append(game.won)
-
-    # second round of training: vs random opponent
-    # idea: see if training has plateaued
-    # re-run until plateaued
-    refines = []
-    player1.learning_rate = 0.75
-    player3 = TablePlayer(init_value_map)
-    player3.learning_rate = 0
-    for i in range(30000):
-        if (i+1)%LR_DECREASE_GAMES == 0:
-            player1.learning_rate *= LR_DECREASE_RATE
-        game = Game()
-        play_game(game, player1, player3)
-        refines.append(game.won)
-
-    # third round of training: vs other player who is being trained
-    # idea: see if more room to grow
-    player1.learning_rate = 0.75
-    player2.learning_rate = 0.75
-    for i in range(30000):
-        if (i+1)%LR_DECREASE_GAMES == 0:
-            player1.learning_rate *= LR_DECREASE_RATE
-            player2.learning_rate *= LR_DECREASE_RATE
-        game = Game()
-        play_game(game, player1, player2)
-        trains.append(game.won)
+        play_game(game, agent, competitor)
+        init_trains.append(game.won)
+        
+    init_trains_mv = moving_value_frequencies(init_trains)
+    plot_outcome_frequencies(init_trains_mv,
+                            order=[1, 0, -1],
+                            labels=['Agent Wins', 'Tie', 'Competitor Wins'])
+    
+    # test against a random player to see how much we've learned
+    agent.explore = False
+    agent.learning_rate = 0
+    rando = TablePlayer(init_value_map)
+    rando.learning_rate = 0
 
     tests = []
-    player1.explore = False
-    player1.learning_rate = 0
-    # player2.learning_rate = 0
-    player3 = TablePlayer(init_value_map)
-    player3.learning_rate = 0
+    for i in range(10000):
+        game = Game()
+        play_game(game, agent, rando)
+        tests.append(game.won)
+
+    tests_mv = moving_value_frequencies(tests)
+    plot_outcome_frequencies(tests_mv,
+                            order=[1, 0, -1],
+                            labels=['Agent Wins', 'Tie', 'Random Wins'])
+    
+    # train against random player to explore new situations
+    agent.explore = True
+    agent.learning_rate = 0.8
+
+    rando_trains = []
+    for i in range(50000):
+        game = Game()
+        play_game(game, agent, rando)
+        rando_trains.append(game.won)
+
+    agent.explore = False
+    agent.learning_rate = 0
+    tests_2 = []
+    for i in range(10000):
+        game = Game()
+        play_game(game, agent, rando)
+        tests_2.append(game.won)
+
+    tests_mv_2 = moving_value_frequencies(tests_2)
+    plot_outcome_frequencies(tests_mv_2,
+                            order=[1, 0, -1],
+                            labels=['Agent Wins', 'Tie', 'Random Wins'])
+
+    # additional training against competitor
+    agent.explore = True
+    agent.learning_rate = 0.8
+
+    comp_trains_2 = []
+    for i in range(50000):
+        game = Game()
+        play_game(game, agent, competitor)
+        comp_trains_2.append(game.won)
+        
+    tests = []
+    agent.explore = False
+    agent.learning_rate = 0
     for _ in range(10000):
         game = Game()
-        play_game(game, player1, player3)
+        play_game(game, agent, rando)
         tests.append(game.won)
-    # print(value_frequencies(tests))
-    plot_outcome_frequencies(moving_value_frequencies(tests))
-
+        
+    test_mv = moving_value_frequencies(tests)
+    plot_outcome_frequencies(test_mv,
+                            order=[1, 0, -1],
+                            labels=['Agent Wins', 'Tie', 'Random Wins'])
+    
     # save_map = format_value_map(player1.value_map, tuple_to_str)
     # with open('value_map.json', 'w') as fp:
     #     json.dump(save_map, fp)

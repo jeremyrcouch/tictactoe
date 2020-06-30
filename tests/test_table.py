@@ -156,7 +156,7 @@ def test_TablePlayer_process_reward(value_map, reward, expected):
 
     # assert
     if expected == 'eq':
-        assert value_mods is None
+        assert len(value_mods) == 0
     else:
         assert len(value_mods) == len(player.buffer)
         if expected == 'pos':

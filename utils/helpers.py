@@ -1,7 +1,7 @@
-import numpy as np
 from typing import List, Tuple, Union
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 from utils.players import Player, Human
 

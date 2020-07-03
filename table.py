@@ -1,8 +1,12 @@
 from collections import namedtuple
 from copy import deepcopy
 from itertools import product
-import numpy as np
+import json
 from typing import List, Tuple, Union
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import numpy as np
 
 from utils.helpers import (Game, play_game, moving_average, state_transforms,
      check_states, state_transforms, reverse_transforms, reverse_function, state_to_actions,
@@ -193,12 +197,42 @@ def value_map_distribution(value_map: dict, bounds: List[float] = None):
     return dist
 
 
+def show_move_values(player: Player, game: Game):
+    """Show learned values for game state.
+
+    Args:
+        player: instance of Player class
+        game: instance of Game class
+    """
+
+    match_state, transform = state_lookup(game.state, player.value_map)
+    action_values = agent.value_map.get(match_state, None)[game.mark]
+    adj_values = reverse_transforms(action_values, transform, game.ind_to_loc)
+
+    _, ax = plt.subplots(figsize=(4.5, 4.5))
+    _ = plt.plot([1, 1], [0, -3], 'k-', linewidth=4)
+    _ = plt.plot([2, 2], [0, -3], 'k-', linewidth=4)
+    _ = plt.plot([0, 3], [-1, -1], 'k-', linewidth=4)
+    _ = plt.plot([0, 3], [-2, -2], 'k-', linewidth=4)
+    for x, y in game.ind_to_loc:
+        if game.state[x, y] != 0:
+            mark = 'x' if game.state[x, y] == 1 else 'o'
+            plt.text(x + 0.275, -y - 0.725, mark, size=60)
+        else:
+            plt.text(x + 0.35, -y - 0.575, adj_values[x, y], size=15)
+            square = patches.Rectangle((x, -y - 1), 1, 1, linewidth=0,
+                                       edgecolor='none', facecolor='r',
+                                       alpha=adj_values[x, y]*0.75)
+            ax.add_patch(square)
+    _ = ax.axis('off')
+
+
 class TablePlayer(Player):    
     def __init__(self, value_map: dict):
         super().__init__(self)
         self.value_map = deepcopy(value_map)
         self.discount_rate = 0.9  # discount future rewards
-        self.temporal_discount_rate = 0.8  # discount credit assigned to moves in past
+        self.temporal_discount_rate = 0.8  # discount credit assigned to earlier moves
 
     def play(self, marker: int, game: Game) -> Tuple[int]:
         """Player's action during their turn.
@@ -279,9 +313,6 @@ class TablePlayer(Player):
                 max_future = new_action_values
 
             # use the Bellman equation to update the current value
-            # maximum future reward for this state is the current reward
-            #     plus the maximum future reward of the next state
-            # Q[s,a] = Q[s,a] + α*(r + γ*np.max(Q[s1,:]) - Q[s,a])
             updated = np.clip(current + temporal_discount*self.learning_rate*(reward
                 + (self.discount_rate*max_future - current)),
                 a_min=0, a_max=1)
@@ -306,14 +337,14 @@ if __name__ == '__main__':
     competitor = TablePlayer(init_value_map)
 
     # train against a player who is learning how to beat you
-    init_trains = []
-    for i in range(50000):
+    trains = []
+    for _ in range(100000):
         game = Game()
         play_game(game, agent, competitor)
-        init_trains.append(game.won)
+        trains.append(game.won)
         
-    init_trains_mv = moving_value_frequencies(init_trains)
-    plot_outcome_frequencies(init_trains_mv,
+    trains_mv = moving_value_frequencies(trains)
+    plot_outcome_frequencies(trains_mv,
                             order=[1, 0, -1],
                             labels=['Agent Wins', 'Tie', 'Competitor Wins'])
     
@@ -324,62 +355,60 @@ if __name__ == '__main__':
     rando.learning_rate = 0
 
     tests = []
-    for i in range(10000):
+    for _ in range(10000):
         game = Game()
         play_game(game, agent, rando)
         tests.append(game.won)
 
-    tests_mv = moving_value_frequencies(tests)
-    plot_outcome_frequencies(tests_mv,
-                            order=[1, 0, -1],
-                            labels=['Agent Wins', 'Tie', 'Random Wins'])
+    tests_freq = value_frequencies(tests)
+    print(tests_freq)
     
     # train against random player to explore new situations
     agent.explore = True
     agent.learning_rate = 0.8
 
-    rando_trains = []
-    for i in range(50000):
+    rand_trains = []
+    for _ in range(100000):
         game = Game()
         play_game(game, agent, rando)
-        rando_trains.append(game.won)
+        rand_trains.append(game.won)
+
+    rand_mv = moving_value_frequencies(rand_trains)
+    plot_outcome_frequencies(rand_mv,
+                            order=[1, 0, -1],
+                            labels=['Agent Wins', 'Tie', 'Random Wins'])
 
     agent.explore = False
     agent.learning_rate = 0
     tests_2 = []
-    for i in range(10000):
+    for _ in range(10000):
         game = Game()
         play_game(game, agent, rando)
         tests_2.append(game.won)
 
-    tests_mv_2 = moving_value_frequencies(tests_2)
-    plot_outcome_frequencies(tests_mv_2,
-                            order=[1, 0, -1],
-                            labels=['Agent Wins', 'Tie', 'Random Wins'])
+    tests_freq_2 = value_frequencies(tests_2)
+    print(tests_freq_2)
 
     # additional training against competitor
     agent.explore = True
     agent.learning_rate = 0.8
 
-    comp_trains_2 = []
-    for i in range(50000):
+    for _ in range(50000):
         game = Game()
         play_game(game, agent, competitor)
-        comp_trains_2.append(game.won)
+        trains.append(game.won)
         
-    tests = []
+    final_tests = []
     agent.explore = False
     agent.learning_rate = 0
     for _ in range(10000):
         game = Game()
         play_game(game, agent, rando)
-        tests.append(game.won)
+        final_tests.append(game.won)
         
-    test_mv = moving_value_frequencies(tests)
-    plot_outcome_frequencies(test_mv,
-                            order=[1, 0, -1],
-                            labels=['Agent Wins', 'Tie', 'Random Wins'])
+    final_freq = value_frequencies(final_tests)
+    print(final_freq)
     
-    # save_map = format_value_map(player1.value_map, tuple_to_str)
-    # with open('value_map.json', 'w') as fp:
-    #     json.dump(save_map, fp)
+    save_map = format_value_map(agent.value_map, tuple_to_str)
+    with open('value_map.json', 'w') as fp:
+        json.dump(save_map, fp)

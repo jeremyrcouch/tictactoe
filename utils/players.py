@@ -1,6 +1,7 @@
 from collections import namedtuple
-import numpy as np
 from typing import Tuple, Union
+
+import numpy as np
 
 
 MoveRecord = namedtuple('MoveRecord', ['state', 'move', 'marker'])

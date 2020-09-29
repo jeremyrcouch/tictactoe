@@ -219,6 +219,7 @@ def show_move_values(player: Player, game: Game):
             mark = 'x' if game.state[x, y] == 1 else 'o'
             plt.text(x + 0.275, -y - 0.725, mark, size=60)
         else:
+            # TODO: add round(x, 2)
             plt.text(x + 0.35, -y - 0.575, adj_values[x, y], size=15)
             square = patches.Rectangle((x, -y - 1), 1, 1, linewidth=0,
                                        edgecolor='none', facecolor='r',

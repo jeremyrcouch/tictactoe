@@ -135,6 +135,23 @@ class NeuralPlayer(Player):
         values = self._state_values(state_mod)
         return values.tolist()
     
+    def _update_value_with_reward(self, value: float, reward: float, lr: float,
+        temporal_discount: float) -> float:
+        updated = np.clip(
+            value + temporal_discount*lr*reward,
+            a_min=0,
+            a_max=1
+        )
+        return updated
+    
+    def _calc_target_values(self, values: List[float], current: float, updated: float,
+        move_ind: int) -> List[float]:
+        diff = updated - current
+        target = values.detach().clone()
+        target = target - (diff/(len(values) - 1))
+        target[move_ind] = updated
+        return target
+    
     def play(self, marker: int, game: Game) -> Tuple[int]:
         """Player's action during their turn.
 
@@ -193,15 +210,9 @@ class NeuralPlayer(Player):
             # ..when we receive a reward for taking an action, we want to adjust that probability accordingly..
             # ..and adjust the other actions down to compensate (returning the sum to 1)
             # less credit is given to earlier moves, according to the temporal_discount_rate
-            updated = np.clip(
-                current + temporal_discount*self.learning_rate*reward,
-                a_min=0,
-                a_max=1
-            )
-            diff = updated - current
-            target = values.detach().clone()
-            target = target - (diff/(len(values) - 1))
-            target[move_ind] = updated
+            updated = self._update_value_with_reward(current, reward,
+                self.learning_rate, temporal_discount)
+            target = self._calc_target_values(values, current, updated, move_ind)
             loss = self.loss_fn(values, target)
             loss.backward()
             self.opt.step()

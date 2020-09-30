@@ -93,6 +93,56 @@ def test_NeuralPlayer_policy():
     assert isinstance(move_values, list)
 
 
+@pytest.mark.parametrize(
+    "value, reward",
+    [
+        pytest.param(0.01, -1, id="less-than-zero"),
+        pytest.param(0.99, 1, id="greater-than-one"),
+        pytest.param(0.5, 0, id="no-reward"),
+        pytest.param(0.5, 1, id="win"),
+        pytest.param(0.5, -1, id="lose")
+    ],
+)
+def test_NeuralPlayer_update_value_with_reward(value, reward):
+    # arrange
+    game = Game()
+    agent = NeuralPlayer(linear_net(game))
+    lr = 0.25
+    temp_disc = 0.5
+
+    # act
+    updated = agent._update_value_with_reward(value, reward, lr, temp_disc)
+
+    # assert
+    assert updated >= 0
+    assert updated <= 1
+    if reward == 0:
+        assert updated == value
+    elif reward > 0:
+        assert updated > value
+    elif reward < 0:
+        assert updated < value
+
+
+def test_NeuralPlayer_calc_target_values():
+    # arrange
+    game = Game()
+    agent = NeuralPlayer(linear_net(game))
+    n_vals = game.board_shape[0]*game.board_shape[1]
+    rand_vals = list(np.random.rand(n_vals, 1))
+    values = torch.tensor(rand_vals, dtype=float)
+    move_ind = 5
+    current = values[move_ind].item()
+    updated = current*1.1
+
+    # act
+    targets = agent._calc_target_values(values, current, updated, move_ind)
+
+    # assert
+    assert targets[move_ind].item() == updated
+    assert torch.sum(values).item() == torch.sum(targets).item()
+
+
 def test_NeuralPlayer_play():
     # arrange
     game = Game()

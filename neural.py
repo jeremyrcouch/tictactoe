@@ -98,7 +98,7 @@ def show_move_values(player: Player, game: Game):
             plt.text(y + 0.275, -x - 0.725, mark, size=60)
         else:
             plt.text(y + 0.35, -x - 0.575, round(values[x, y], 2), size=15)
-            square = patches.Rectangle((x, -y - 1), 1, 1, linewidth=0,
+            square = patches.Rectangle((y, -x - 1), 1, 1, linewidth=0,
                                        edgecolor='none', facecolor='r',
                                        alpha=values[x, y]*0.75)
             ax.add_patch(square)

@@ -221,7 +221,7 @@ def show_move_values(player: Player, game: Game):
         else:
             # TODO: add round(x, 2)
             plt.text(y + 0.35, -x - 0.575, adj_values[x, y], size=15)
-            square = patches.Rectangle((x, -y - 1), 1, 1, linewidth=0,
+            square = patches.Rectangle((y, -x - 1), 1, 1, linewidth=0,
                                        edgecolor='none', facecolor='r',
                                        alpha=adj_values[x, y]*0.75)
             ax.add_patch(square)

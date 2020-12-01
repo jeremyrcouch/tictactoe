@@ -302,8 +302,13 @@ class TablePlayer(Player):
             action_values = self.value_map[match_state][entry.marker]
             adj_values = reverse_transforms(action_values, transform, ind_to_loc)
             current = adj_values[entry.move]
-
-            # find the maximum value in the state resulting from the current move
+            
+			# TODO: after a player's move, there is no valid move for that marker
+			# so the maximum future value is likely not being found correctly
+			# option: use the next state in the buffer (after competitor's turn), if there is one
+			#  - dependent on quality of competitor's move
+			#  - if no more states in buffer, have to use last state
+			# find the maximum value in the state resulting from the current move
             new_state = np.copy(entry.state)
             new_state[entry.move[0], entry.move[1]] = entry.marker
             new_match_state, _ = state_lookup(new_state, self.value_map)

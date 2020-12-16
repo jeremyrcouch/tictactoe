@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
 
-from utils.helpers import (Game, play_game, moving_average, state_transforms,
-     check_states, state_transforms, reverse_transforms, reverse_function, state_to_actions,
+from utils.helpers import (Game, play_game, moving_average,
+     check_states, reverse_transforms, reverse_function, state_to_actions,
      tuple_to_str, str_to_tuple, value_frequencies, moving_value_frequencies,
      plot_outcome_frequencies)
 from utils.players import Player, Human, MoveRecord
@@ -206,6 +206,8 @@ def show_move_values(player: Player, game: Game):
     """
 
     match_state, transform = state_lookup(game.state, player.value_map)
+    if 'k' in transform['args']:
+        transform['args']['k'] = -transform['args']['k']
     action_values = agent.value_map.get(match_state, None)[game.mark]
     adj_values = reverse_transforms(action_values, transform, game.ind_to_loc)
 
@@ -251,6 +253,8 @@ class TablePlayer(Player):
 
     def _policy(self, marker: int, game: Game) -> Tuple[int]:
         match_state, transform = state_lookup(game.state, self.value_map)
+        if 'k' in transform['args']:
+            transform['args']['k'] = -transform['args']['k']
         action_values = self.value_map.get(match_state, None)[marker]
         adj_values = reverse_transforms(action_values, transform, game.ind_to_loc)
         actions = [a for a in adj_values]
@@ -299,8 +303,11 @@ class TablePlayer(Player):
         for entry in entries:
             # find the current value of (state, marker, move) combo
             match_state, transform = state_lookup(entry.state, self.value_map)
+            if 'k' in transform['args']:
+                transform['args']['k'] = -transform['args']['k']
             action_values = self.value_map[match_state][entry.marker]
             adj_values = reverse_transforms(action_values, transform, ind_to_loc)
+            print(adj_values)
             current = adj_values[entry.move]
             
 			# TODO: after a player's move, there is no valid move for that marker

@@ -184,6 +184,16 @@ def test_play_game():
     pass
 
 
+@pytest.mark.skip(reason='side effects')
+def test_play_round_of_games():
+    pass
+
+
+@pytest.mark.skip(reason='side effects')
+def test_replay_loss():
+    pass
+
+
 def test_state_to_actions():
     # arrange
     state = (0, 1, -1, 1, 0, -1, -1, 1, 0)
@@ -202,25 +212,25 @@ def test_check_states():
     expected_count = 12
     expected_transforms = [
         {'func': None, 'args': {}},
-        {'func': np.rot90, 'args': {'k': -1}},
-        {'func': np.rot90, 'args': {'k': -2}},
-        {'func': np.rot90, 'args': {'k': -3}},
+        {'func': np.rot90, 'args': {'k': 1}},
+        {'func': np.rot90, 'args': {'k': 2}},
+        {'func': np.rot90, 'args': {'k': 3}},
         {'func': np.fliplr, 'args': {}},
         {'func': np.flipud, 'args': {}}
     ]
     expected_states = {
         (0, 1, -1, 0, 0, -1, -1, 1, 1),
-        (-1, 1, 1, 0, 0, -1, 0, 1, -1),
-        (-1, 1, 0, -1, 0, 0, 1, 1, -1),
         (-1, -1, 1, 1, 0, 1, 0, 0, -1),
         (1, 1, -1, -1, 0, 0, -1, 1, 0),
         (-1, 0, 0, 1, 0, 1, 1, -1, -1),
+        (-1, 1, 0, -1, 0, 0, 1, 1, -1),
+        (-1, 1, 1, 0, 0, -1, 0, 1, -1),
         (0, -1, 1, 0, 0, 1, 1, -1, -1),
-        (1, -1, -1, 0, 0, 1, 0, -1, 1),
-        (1, -1, 0, 1, 0, 0, -1, -1, 1),
         (1, 1, -1, -1, 0, -1, 0, 0, 1),
         (-1, -1, 1, 1, 0, 0, 1, -1, 0),
-        (1, 0, 0, -1, 0, -1, -1, 1, 1)
+        (1, 0, 0, -1, 0, -1, -1, 1, 1),
+        (1, -1, 0, 1, 0, 0, -1, -1, 1),
+        (1, -1, -1, 0, 0, 1, 0, -1, 1)
     }
 
     # act
@@ -239,19 +249,19 @@ def test_state_transforms():
     expected_count = 6
     expected_transforms = [
         {'func': None, 'args': {}},
-        {'func': np.rot90, 'args': {'k': -1}},
-        {'func': np.rot90, 'args': {'k': -2}},
-        {'func': np.rot90, 'args': {'k': -3}},
+        {'func': np.rot90, 'args': {'k': 1}},
+        {'func': np.rot90, 'args': {'k': 2}},
+        {'func': np.rot90, 'args': {'k': 3}},
         {'func': np.fliplr, 'args': {}},
         {'func': np.flipud, 'args': {}}
     ]
     expected_states = {
         (0, 1, -1, 0, 0, -1, -1, 1, 1),
-        (-1, 1, 1, 0, 0, -1, 0, 1, -1),
-        (-1, 1, 0, -1, 0, 0, 1, 1, -1),
         (-1, -1, 1, 1, 0, 1, 0, 0, -1),
         (1, 1, -1, -1, 0, 0, -1, 1, 0),
-        (-1, 0, 0, 1, 0, 1, 1, -1, -1)
+        (-1, 0, 0, 1, 0, 1, 1, -1, -1),
+        (-1, 1, 0, -1, 0, 0, 1, 1, -1),
+        (-1, 1, 1, 0, 0, -1, 0, 1, -1)
     }
 
     # act

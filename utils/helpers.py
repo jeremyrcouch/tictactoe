@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import List, Tuple, Union
 
 import matplotlib.pyplot as plt
@@ -21,6 +22,16 @@ class Game:
         self.done = False
         self.won = self.empty_marker
         self.turn = self.empty_marker
+    
+    @property
+    def first(self):
+        """Which player went first this game."""
+        if self.turn == self.empty_marker:
+            return None
+        total = np.sum(self.state)
+        if total != 0:
+            return total
+        return self.turn
 
     def determine_reward(self, marker: int) -> Union[int, float]:
         """Reward criteria for game.
@@ -139,7 +150,7 @@ def moving_average(vals: list, n: int = 100) -> np.ndarray:
 
 
 # side effects
-def play_game(game: Game, player1: Player, player2: Player, first: int = None):
+def play_game(game: Game, player1: Player, player2: Player, first: int = None, actions: list = None):
     """Play a single game.
 
     Args:
@@ -147,33 +158,87 @@ def play_game(game: Game, player1: Player, player2: Player, first: int = None):
         player1: instance of player class
         player2: instance of player class
         first: int, index of Game.valid_markers (0 or 1) to specify whose turn is first
+        actions: list, predefined series of actions to take
     """
 
     player1.buffer = []
     player2.buffer = []
+    if actions is not None:
+        # TODO: don't ignore first arg here, check consistent or not defined
+        if len(actions[0]) > len(actions[1]):
+            first = 1
+        elif len(actions[1]) > len(actions[0]):
+            first = 0
+        pmoves = [(m for m in p) for p in actions]
+    else:
+        pmoves = [(m for m in []) for p in range(2)]
     if first is not None:
         game.turn = game.valid_markers[first]
     else:
         game.turn = np.random.choice(game.valid_markers)
 
+    marks = game.valid_markers[::-1]
     while not game.done:
         prev_state = np.copy(game.state)
         prev_turn = game.turn
+        act_index = marks.index(game.turn)
         # defining player1's marker as 1
         cur_player = player1 if game.turn == 1 else player2
-        move = cur_player.play(game.turn, game)
+        try:
+            move = next(pmoves[act_index])
+        except StopIteration:
+            move = cur_player.play(game.turn, game)
         valid, reward = game.mark(move, game.turn)
         if not valid and not isinstance(cur_player, Human):
             break
         cur_player.record_move(prev_state, move, prev_turn)
         if cur_player.learning_rate > 0:
-            _ = cur_player.process_reward(reward, game.ind_to_loc)
+            cur_player.process_reward(reward, game.ind_to_loc)
     
     # reward for player who did not make the last move (won/lost/tie)
     cur_player = player1 if game.turn == 1 else player2
     if cur_player.learning_rate > 0:
         reward = game.determine_reward(game.turn)
-        _ = cur_player.process_reward(reward, game.ind_to_loc)
+        cur_player.process_reward(reward, game.ind_to_loc)
+
+
+# side effects
+def play_round_of_games(player1: Player, player2: Player, n: int,
+                        first: int = None, actions: list = None, silent: bool = False):
+    outcomes = []
+    for i in range(n):
+        if (not silent) and ((i + 1) % int(n/5) == 0):
+            print('{:.0%}'.format((i + 1)/n))
+        game = Game()
+        play_game(game, agent, competitor, first=first, actions=actions)
+        outcomes.append(game.won)
+        
+    return outcomes
+
+
+# when we lose, we want to train that game to get better at that series of situations
+def replay_loss(agent: Player, player2: Player, game: Game, n: int):
+    step = 0
+    first = game.first
+    p1buff = deepcopy(agent.buffer)
+    p2buff = deepcopy(player2.buffer)
+    while step < len(p1buff):
+        actions = [
+            [b.move for b in p1buff[:-step]],
+            [b.move for b in p2buff[:-step]]
+        ]
+        outcomes = play_round_of_games(agent, player2, n, first=first,
+                                       actions=actions, silent=True)
+        step += 1
+    agent.explore = False
+    actions = [
+        [b.move for b in p1buff[:-1]],
+        [b.move for b in p2buff[:-1]]
+    ]
+    outcomes = play_round_of_games(agent, RandomPlayer(), n, first=first,
+                                   actions=actions, silent=True)
+    agent.explore = True
+    return outcomes
 
 
 def state_to_actions(state: Tuple[int], ind_to_loc: List[Tuple], empty: str) -> List[Tuple]:
@@ -230,7 +295,7 @@ def state_transforms(state: Tuple[int]) -> (List[Tuple], List[dict]):
     for k in [1, 2, 3]:
         rot = np.rot90(box, k=k)
         states.append(tuple(rot.flatten()))
-        transforms.append({'func': np.rot90, 'args': {'k': -k}})
+        transforms.append({'func': np.rot90, 'args': {'k': k}})
     lr = np.fliplr(box)
     states.append(tuple(lr.flatten()))
     transforms.append({'func': np.fliplr, 'args': {}})

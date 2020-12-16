@@ -11,3 +11,8 @@ def test_Player_record_move():
 @pytest.mark.skip(reason='user input')
 def test_Human_play():
     pass
+
+
+@pytest.mark.skip(reason='trivial')
+def test_RandomPlayer_play():
+    pass

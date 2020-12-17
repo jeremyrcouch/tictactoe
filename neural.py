@@ -10,37 +10,45 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 from utils.helpers import (Game, play_game, value_frequencies, moving_value_frequencies,
-    plot_outcome_frequencies, state_to_actions)
+    plot_outcome_frequencies, state_to_actions, check_states, reverse_function)
 from utils.players import Player, Human, MoveRecord
 
-device = torch.device('cpu')
+device = torch.device('cpu')  # if you are running on a machine with a nvidia gpu, use 'cuda' here
 
 
-# TODO: correct properties?
-ValueMod = namedtuple('ValueMod', ['state', 'move', 'previous', 'target', 'result'])
+ValueMod = namedtuple('ValueMod', ['state', 'move', 'previous', 'target', 'result', 'equiv'])
 
 
-def linear_net(game: Game, hidden_mult: int = 1, drop_prob: float = 0.1):
-    """Linear network with a single hidden layer.
+def linear_net(game: Game, hidden_layers: list = None, drop_prob: float = 0.1):
+    """Linear network with a flexible number of hidden layers.
     
     Args:
         game: instance of Game class
-        hidden_mult: int, hidden layer will have dim = hidden_mult * board_size
+        hidden_layers: list of int, length is number of layers
+            value means that layer will have that times many more features than the previous layer
         drop_prob: float, dropout probability
     
     Returns:
         net: sequential neural network
     """
     
+    if hidden_layers is None:
+        hidden_layers = [1]
+    
     n_spots = game.board_shape[0]*game.board_shape[1]
-    n_inputs = (len(game.valid_markers) + 1)*n_spots
-    n_hidden = int(n_inputs*hidden_mult)
+    n_inputs = len(game.valid_markers)*n_spots
+    prev_feats = n_inputs
+    linear_layers = []
+    for layer_mult in hidden_layers:
+        cur_feats = int(prev_feats*layer_mult)
+        linear_layers.append(nn.Linear(prev_feats, cur_feats))
+        prev_feats = cur_feats
 
     net = nn.Sequential(
-        nn.Linear(n_inputs, n_hidden),
+        *linear_layers,
         nn.ReLU(),
         nn.Dropout(drop_prob),
-        nn.Linear(n_hidden, n_spots),
+        nn.Linear(prev_feats, n_spots),
         nn.Softmax(dim=0)
     )
 
@@ -59,7 +67,7 @@ def one_hot_state(state: np.ndarray, marker_order: List[int] = None) -> np.ndarr
     """
     
     if marker_order is None:
-        marker_order = [-1, 0, 1]
+        marker_order = [-1, 1]
     flat = tuple(state.flatten())
     ohe = []
     for m in marker_order:
@@ -76,7 +84,7 @@ def show_move_values(player: Player, game: Game):
         game: instance of Game class
     """
 
-    # TODO: function for this and play()
+    # TODO: function for this and play()            
     actions = state_to_actions(tuple(game.state.flatten()), game.ind_to_loc, game.empty_marker)
     raw_values = player._policy(game.turn, game)
     valid_inds = [game.ind_to_loc.index(a) for a in actions]
@@ -106,15 +114,16 @@ def show_move_values(player: Player, game: Game):
 
 
 class NeuralPlayer(Player):    
-    def __init__(self, net):
+    def __init__(self, net, lr: float, temp_rate: float = 0.8, nn_lr: float = 1e-3):
         super().__init__(self)
-        self.learning_rate = 0.25
-        self.temporal_discount_rate = 0.75  # discount credit assigned to earlier moves
-        self.nn_learning_rate = 1e-2
+        self.learning_rate = lr
+        self.temporal_discount_rate = temp_rate  # discount credit assigned to earlier moves
+        self.nn_learning_rate = nn_lr
         self.net = net
         self.opt = optim.Adam(self.net.parameters(), lr=self.nn_learning_rate)
         self.loss_fn = nn.MSELoss()
-
+        self.min_probability = 1/81
+    
     def _state_values(self, state: np.ndarray) -> List[float]:
         hot = one_hot_state(state)
         x = torch.tensor(hot, dtype=float)
@@ -132,8 +141,10 @@ class NeuralPlayer(Player):
         # alternatively, could pass in current player's marker as a feature..
         # ..but that would be more difficult to troubleshoot
         state_mod = self._adjust_state_for_marker(game.state, marker)
-        values = self._state_values(state_mod)
-        return values.tolist()
+        values_raw = self._state_values(state_mod)
+        values = values_raw.tolist()
+        valid_values = np.nan_to_num(values, nan=0.0, posinf=1.0, neginf=0.0)
+        return list(valid_values)
     
     def _update_value_with_reward(self, value: float, reward: float, lr: float,
         temporal_discount: float) -> float:
@@ -145,11 +156,26 @@ class NeuralPlayer(Player):
         return updated
     
     def _calc_target_values(self, values: List[float], current: float, updated: float,
-        move_ind: int) -> List[float]:
+        move_ind: int, valid_inds: list) -> List[float]:
         diff = updated - current
         target = values.detach().clone()
-        target = target - (diff/(len(values) - 1))
+
+        # set non-valid indexes to 0 target value
+        for i in [j for j in range(len(values)) if j not in valid_inds]:
+            target[i] = 0
+
+        # don't violate 0 to 1 range
+        adj_inds = [j for j in valid_inds if j != move_ind]
+        if len(adj_inds) > 0:
+            sub = diff/len(adj_inds)
+        else:
+            sub = diff
+        for i in adj_inds:
+            target[i] = np.clip(target[i].detach() - sub, a_min=0, a_max=1)
+
         target[move_ind] = updated
+        if sum(target) > 0:
+            target = target/sum(target)
         return target
     
     def play(self, marker: int, game: Game) -> Tuple[int]:
@@ -164,6 +190,8 @@ class NeuralPlayer(Player):
         """
 
         actions = state_to_actions(tuple(game.state.flatten()), game.ind_to_loc, game.empty_marker)
+        if len(actions) == 0:
+            raise Error('no available actions')
         raw_values = self._policy(marker, game)
         valid_inds = [game.ind_to_loc.index(a) for a in actions]
         valid_values = [raw_values[ind] for ind in valid_inds]
@@ -173,14 +201,75 @@ class NeuralPlayer(Player):
             values = [v/sum(valid_values) for v in valid_values]
         loc_inds = [i for i in range(len(values))]
         if self.explore:
+            # limit the minimum probability for an action
+            probs = [v if v > self.min_probability else self.min_probability for v in values]
+            probs = [v/sum(probs) for v in probs]
             # take action with probability proportional to value
-            loc_ind = np.random.choice(loc_inds, p=values)
+            loc_ind = np.random.choice(loc_inds, p=probs)
         else:
             # exploit - take action with highest value
             loc_ind = loc_inds[np.argmax(values)]
         loc = actions[loc_ind]
         return loc
 
+    def _equivalent_states_to_reward(self, state: np.ndarray) -> (list, list):
+        equiv_states, equiv_transforms = check_states(state)
+        non_swap_ind = int(len(equiv_states)/2)
+        equiv_no_swap = equiv_states[:non_swap_ind]
+        equiv_no_swap = [np.reshape(s, (3, 3)) for s in equiv_no_swap]
+        trans_no_swap = equiv_transforms[:non_swap_ind]
+        equivs = []
+        transforms = []
+        for s, t in zip(equiv_no_swap, trans_no_swap):
+            if not any([np.array_equal(s, es) for es in equivs]):
+                equivs.append(s)
+                transforms.append(t)
+        return equivs, transforms
+
+    def _reward_move(self, state: np.ndarray, marker: int, move: tuple, reward: float,
+                     temp_disc: float, ind_to_loc: List[Tuple]) -> ValueMod:
+        reward_mods = []
+        adj_state = self._adjust_state_for_marker(state, marker)
+        equiv_states, equiv_transforms = self._equivalent_states_to_reward(adj_state)
+        for s, t in zip(equiv_states, equiv_transforms):
+            equiv = not np.array_equal(s, adj_state)
+            mod = self._process_state_reward(s, t, move, reward, temp_disc, equiv, ind_to_loc)
+            reward_mods.append(mod)
+        return reward_mods
+
+    def _process_state_reward(self, state: np.ndarray, transform: dict, move: tuple, reward: float,
+                              temp_disc: float, equiv: bool, ind_to_loc: List[Tuple]):
+        actions = state_to_actions(tuple(state.flatten()), ind_to_loc, 0)
+        valid_inds = [ind_to_loc.index(a) for a in actions]
+        values = self._state_values(state)
+        adj_move = reverse_function(move, ind_to_loc, transform['func'], transform['args'])
+        move_ind = ind_to_loc.index(adj_move)
+        current = values[move_ind].item()
+
+        # our network outputs probabilities for each action..
+        # ..when we receive a reward for taking an action, we want to adjust that probability accordingly..
+        # ..and adjust the other actions down to compensate (returning the sum to 1)
+        # less credit is given to earlier moves, according to the temporal_discount_rate
+        updated = self._update_value_with_reward(current, reward,
+            self.learning_rate, temp_disc)
+        target = self._calc_target_values(values, current, updated, move_ind, valid_inds)
+        loss = self.loss_fn(values, target)
+        loss.backward()
+        self.opt.step()
+        self.opt.zero_grad()
+
+        new_values = self._state_values(state)
+        result = new_values[move_ind].item()
+        mod = ValueMod(
+            state=state,
+            move=move,
+            previous=current,
+            target=updated,
+            result=result,
+            equiv=equiv
+        )
+        return mod
+            
     def process_reward(self, reward: Union[int, float], ind_to_loc: List[Tuple]) -> List[ValueMod]:
         """Learn from reward.
 
@@ -194,128 +283,88 @@ class NeuralPlayer(Player):
         
         temporal_discount = 1
         reward_mods = []
-        # if the reward is 0, no update
         if reward == 0:
             return reward_mods
         
         # if there's a non-zero reward (win/loss), assign credit to all moves
         entries = self.buffer[::-1]
         for entry in entries:
-            state_mod = self._adjust_state_for_marker(entry.state, entry.marker)
-            values = self._state_values(state_mod)
-            move_ind = ind_to_loc.index(entry.move)
-            current = values[move_ind].item()
-
-            # our network outputs probabilities for each action..
-            # ..when we receive a reward for taking an action, we want to adjust that probability accordingly..
-            # ..and adjust the other actions down to compensate (returning the sum to 1)
-            # less credit is given to earlier moves, according to the temporal_discount_rate
-            updated = self._update_value_with_reward(current, reward,
-                self.learning_rate, temporal_discount)
-            target = self._calc_target_values(values, current, updated, move_ind)
-            loss = self.loss_fn(values, target)
-            loss.backward()
-            self.opt.step()
-            self.opt.zero_grad()
-            
-            new_values = self._state_values(state_mod)
-            result = new_values[move_ind].item()
-
-            # update temporal discount and record modification to value map
+            mods = self._reward_move(entry.state, entry.marker, entry.move, reward,
+                                     temporal_discount, ind_to_loc)
+            reward_mods.extend(mods)
             temporal_discount *= self.temporal_discount_rate
-            mod = ValueMod(
-                state=entry.state,
-                move=entry.move,
-                previous=current,
-                target=updated,
-                result=result
-            )
-            reward_mods.append(mod)
-
-        return reward_mods
+        
+        self.reward_record = reward_mods
 
 
 if __name__ == '__main__':
-    agent = NeuralPlayer(linear_net(Game(), hidden_mult=2, drop_prob=0.1))
-    competitor = NeuralPlayer(linear_net(Game(), hidden_mult=2, drop_prob=0.1))
+    lr = 0.25
+    nn_lr = 1e-3
+    temp_rate = 0.8
+    layers = [2, 1, 0.5] # [1]
+    drop_prob = 0.0 # 0.05
 
-    # train against a player who is learning how to beat you
-    trains = []
-    for _ in range(900000):
+    agent = NeuralPlayer(
+        linear_net(Game(), hidden_layers=layers, drop_prob=drop_prob),
+        lr=lr, temp_rate=temp_rate, nn_lr=nn_lr
+    )
+    competitor = NeuralPlayer(
+        linear_net(Game(), hidden_layers=layers, drop_prob=drop_prob),
+        lr=lr, temp_rate=temp_rate, nn_lr=nn_lr
+    )
+    rando = RandomPlayer()
+
+    n = 50000
+    outcomes = []
+    seq_outcomes = {vm: {out: 0 for out in (Game.valid_markers + [Game.empty_marker])} for vm in Game.valid_markers}
+    for i in range(n):
+        if ((i + 1) % int(n/5)) == 0:
+            print('{:.0%}'.format((i + 1)/n))
         game = Game()
         play_game(game, agent, competitor)
-        trains.append(game.won)
+        outcomes.append(game.won)
+        seq_outcomes[game.first][game.won] += 1
 
-    trains_mv = moving_value_frequencies(trains)
-    plot_outcome_frequencies(
-        trains_mv,
-        order=[1, 0, -1],
-        labels=['Agent Wins', 'Tie', 'Competitor Wins']
-    )
+    n = 2000
+    outcomes2 = []
+    seq_outcomes2 = {vm: {out: 0 for out in (Game.valid_markers + [Game.empty_marker])} for vm in Game.valid_markers}
+    for i in range(n):
+        if ((i + 1) % int(n/5)) == 0:
+            print('{:.0%}'.format((i + 1)/n))
+        
+        for first in [0, 1]:
+            for start in Game.ind_to_loc:
+                game = Game()
+                if first == 0:
+                    actions = [[start], []]
+                else:
+                    actions = [[], [start]]
+                play_game(game, agent, competitor, first=first, actions=actions)
+                outcomes2.append(game.won)
+                seq_outcomes2[game.first][game.won] += 1
 
-    # test against a random player to see how much we've learned
-    agent.explore = False
-    agent.learning_rate = 0
-    rando = NeuralPlayer(linear_net(Game()))
-    rando.learning_rate = 0
+    mv2 = moving_value_frequencies(outcomes2)
+    plot_outcome_frequencies(mv2, order=[1, 0, -1], labels=['Agent Wins', 'Tie', 'Competitor Wins'])
 
-    tests = []
-    for _ in range(10000):
-        game = Game()
-        play_game(game, agent, rando)
-        tests.append(game.won)
 
-    tests_freq = value_frequencies(tests)
-    print(tests_freq)
-    
-    agent.explore = True
-    agent.learning_rate = 0.25
+    agent.explore = False # True
+    agent.learning_rate = 0 # lr
+    test = play_round_of_games(agent, rando, 1000)
+    freqs = value_frequencies(test)
+    print(freqs)
 
-    rand_trains = []
-    for _ in range(500000):
-        game = Game()
-        play_game(game, agent, rando)
-        rand_trains.append(game.won)
-
-    rand_mv = moving_value_frequencies(rand_trains)
-    plot_outcome_frequencies(
-        rand_mv,
-        order=[1, 0, -1],
-        labels=['Agent Wins', 'Tie', 'Random Wins']
-    )
-
-    agent.explore = False
-    agent.learning_rate = 0
-
-    tests_2 = []
-    for _ in range(10000):
-        game = Game()
-        play_game(game, agent, rando)
-        tests_2.append(game.won)
-
-    tests_freq_2 = value_frequencies(tests_2)
-    print(tests_freq_2)
 
     agent.explore = True
-    agent.learning_rate = 0.25
+    agent.learning_rate = lr
+    rand_outcomes = play_round_of_games(agent, rando, 100000)
+    mv = moving_value_frequencies(rand_outcomes)
+    plot_outcome_frequencies(mv, order=[1, 0, -1], labels=['Agent Wins', 'Tie', 'Other Wins'])
 
-    for _ in range(100000):
-        game = Game()
-        play_game(game, agent, competitor)
-        trains.append(game.won)
-        
-    final_tests = []
-    agent.explore = False
-    agent.learning_rate = 0
-    for _ in range(10000):
-        game = Game()
-        play_game(game, agent, rando)
-        final_tests.append(game.won)
-        
-    final_freq = value_frequencies(final_tests)
-    print(final_freq)
 
     game = Game()
-    game.state = np.reshape((0, 1, -1, 0, 1, 0, -1, 0, 0), game.board_shape)
-    game.mark = 1
+    game.state = np.reshape((0, 0, 0, 0, 0, 0, 0, 0, 0), game.board_shape)
+    # game.state = np.reshape((0, 1, -1, 0, 1, 0, -1, 0, 0), game.board_shape)
+    # game.state = np.reshape((-1, 0, 0, 0, 1, 0, 0, 0, -1), game.board_shape)
+    # game.state = np.reshape((0, 0, 0, 0, -1, 0, 0, 0, 0), game.board_shape)
+    game.turn = 1
     show_move_values(agent, game)
